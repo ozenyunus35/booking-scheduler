@@ -1,0 +1,194 @@
+import { addDays, diffDays, weekday, zonedNow } from "./dates";
+import type { Booking, DemoState, ISODate, Interval, Service, Staff } from "./types";
+
+/**
+ * Availability engine. A start time is bookable for a staff member when:
+ * - they offer the service and work that day (no full-day time off),
+ * - the appointment fits inside their hours and misses their breaks and part-day time off,
+ * - the appointment plus its clean-up buffer misses every live booking plus that booking's buffer,
+ * - and, for online booking, it is at least `minNotice` minutes away and within `maxDaysAhead` days.
+ * Start times sit on a `slotStep` grid counted from the start of the staff member's day.
+ */
+
+export type Schedule = Pick<DemoState, "salon" | "rules" | "services" | "staff" | "timeOff" | "bookings">;
+
+export type Reason = "unknown" | "not-offered" | "day-off" | "time-off" | "outside-hours" | "break" | "overlap" | "past" | "too-soon" | "too-far";
+
+export const REASON_TEXT: Record<Reason, string> = {
+  unknown: "That service or staff member no longer exists.",
+  "not-offered": "doesn't offer this service.",
+  "day-off": "isn't working that day.",
+  "time-off": "is off at that time.",
+  "outside-hours": "isn't working at that time.",
+  break: "is on a break at that time.",
+  overlap: "already has an appointment then.",
+  past: "That time has already passed.",
+  "too-soon": "That time is too soon to book online.",
+  "too-far": "That date is too far ahead to book online.",
+};
+
+export interface SlotQuery {
+  serviceId: string;
+  date: ISODate;
+  /** A staff id, or "any" for the first available person. */
+  staffId: string;
+  now: number;
+  /** A booking being rescheduled, which shouldn't block its own new time. */
+  ignoreBookingId?: string;
+  /** Online booking rules (notice, booking horizon). Off for the salon's own calendar. */
+  enforceRules?: boolean;
+}
+
+export interface Slot {
+  start: number;
+  /** Everyone free at this time, in staff order. */
+  staffIds: string[];
+}
+
+const overlaps = (a: Interval, b: Interval) => a.start < b.end && b.start < a.end;
+
+/** Bookings that still hold time on the calendar. */
+export const isLive = (b: Booking) => b.status === "confirmed" || b.status === "completed";
+
+/** The salon's today, the current minute and the last date clients can book online. */
+export function bookingWindow(s: Pick<Schedule, "salon" | "rules">, now: number) {
+  const { date: today, minutes } = zonedNow(s.salon.timeZone, now);
+  return { today, nowMinutes: minutes, earliest: minutes + s.rules.minNotice, lastDate: addDays(today, s.rules.maxDaysAhead) };
+}
+
+interface Day {
+  hours: Interval;
+  /** Breaks and part-day time off. */
+  away: { at: Interval; reason: Reason }[];
+  /** Live bookings with their buffers. */
+  booked: Interval[];
+}
+
+/** Everything that shapes one person's day, or the reason they aren't working at all. */
+function staffDay(s: Schedule, staff: Staff, date: ISODate, ignoreBookingId?: string): Day | Reason {
+  const hours = staff.hours[weekday(date)];
+  if (!hours) return "day-off";
+  const away: Day["away"] = hours.breaks.map((b) => ({ at: b, reason: "break" as const }));
+  for (const t of s.timeOff) {
+    if (t.staffId !== staff.id || date < t.from || date > t.to) continue;
+    if (t.start == null || t.end == null) return "time-off";
+    away.push({ at: { start: t.start, end: t.end }, reason: "time-off" });
+  }
+  const buffers = new Map(s.services.map((x) => [x.id, x.buffer]));
+  const booked = s.bookings
+    .filter((b) => b.staffId === staff.id && b.date === date && isLive(b) && b.id !== ignoreBookingId)
+    .map((b) => ({ start: b.start, end: b.end + (buffers.get(b.serviceId) ?? 0) }));
+  return { hours, away, booked };
+}
+
+/** Why a start time doesn't work for this person, or null when it does. Ignores the online rules. */
+function fit(day: Day, service: Service, start: number): Reason | null {
+  const visit = { start, end: start + service.duration };
+  if (visit.start < day.hours.start || visit.end > day.hours.end) return "outside-hours";
+  const clash = day.away.find((a) => overlaps(visit, a.at));
+  if (clash) return clash.reason;
+  const held = { start, end: visit.end + service.buffer };
+  if (day.booked.some((b) => overlaps(held, b))) return "overlap";
+  return null;
+}
+
+function timing(s: Schedule, q: SlotQuery, start: number): Reason | null {
+  if (q.enforceRules === false) return null;
+  const w = bookingWindow(s, q.now);
+  if (q.date < w.today) return "past";
+  if (q.date > w.lastDate) return "too-far";
+  if (q.date === w.today) {
+    if (start < w.nowMinutes) return "past";
+    if (start < w.earliest) return "too-soon";
+  }
+  return null;
+}
+
+/** Checks one exact start time for one staff member. Returns null when it can be booked. */
+export function checkSlot(s: Schedule, q: SlotQuery & { start: number }): Reason | null {
+  const service = s.services.find((x) => x.id === q.serviceId);
+  const staff = s.staff.find((x) => x.id === q.staffId);
+  if (!service || !staff) return "unknown";
+  if (!service.staffIds.includes(staff.id)) return "not-offered";
+  const t = timing(s, q, q.start);
+  if (t) return t;
+  const day = staffDay(s, staff, q.date, q.ignoreBookingId);
+  return typeof day === "string" ? day : fit(day, service, q.start);
+}
+
+/** Staff who can do a service, in display order. */
+export function staffFor(s: Schedule, serviceId: string): Staff[] {
+  const service = s.services.find((x) => x.id === serviceId);
+  return service ? s.staff.filter((p) => service.staffIds.includes(p.id)) : [];
+}
+
+function startsFor(s: Schedule, q: SlotQuery, service: Service, staff: Staff): number[] {
+  const day = staffDay(s, staff, q.date, q.ignoreBookingId);
+  if (typeof day === "string") return [];
+  const out: number[] = [];
+  for (let t = day.hours.start; t + service.duration <= day.hours.end; t += s.rules.slotStep) {
+    if (!timing(s, q, t) && !fit(day, service, t)) out.push(t);
+  }
+  return out;
+}
+
+/** Bookable start times for a service on a date, for one person or merged across everyone ("any"). */
+export function getSlots(s: Schedule, q: SlotQuery): Slot[] {
+  const service = s.services.find((x) => x.id === q.serviceId);
+  if (!service || !service.active) return [];
+  const team = q.staffId === "any" ? staffFor(s, service.id) : staffFor(s, service.id).filter((p) => p.id === q.staffId);
+  const byStart = new Map<number, string[]>();
+  for (const person of team) {
+    for (const t of startsFor(s, q, service, person)) {
+      const list = byStart.get(t);
+      if (list) list.push(person.id);
+      else byStart.set(t, [person.id]);
+    }
+  }
+  return [...byStart.entries()].sort((a, b) => a[0] - b[0]).map(([start, staffIds]) => ({ start, staffIds }));
+}
+
+/** Number of bookable times per date from `from` for `days` days, for the date picker. */
+export function slotCounts(s: Schedule, q: Omit<SlotQuery, "date">, from: ISODate, days: number): Record<ISODate, number> {
+  const out: Record<ISODate, number> = {};
+  for (let i = 0; i < days; i++) {
+    const date = addDays(from, i);
+    out[date] = getSlots(s, { ...q, date }).length;
+  }
+  return out;
+}
+
+/** The earliest bookable time within the online booking horizon. */
+export function nextAvailable(s: Schedule, q: Omit<SlotQuery, "date">): { date: ISODate; slot: Slot } | null {
+  const w = bookingWindow(s, q.now);
+  const days = diffDays(w.lastDate, w.today);
+  for (let i = 0; i <= days; i++) {
+    const date = addDays(w.today, i);
+    const slots = getSlots(s, { ...q, date });
+    if (slots.length) return { date, slot: slots[0] };
+  }
+  return null;
+}
+
+/**
+ * Picks who takes an "any available" booking: the free person with the fewest
+ * booked minutes that day, so work spreads evenly; ties go to staff order.
+ */
+export function assignStaff(s: Schedule, date: ISODate, staffIds: string[]): string | null {
+  if (!staffIds.length) return null;
+  const load = (id: string) => s.bookings.filter((b) => b.staffId === id && b.date === date && isLive(b)).reduce((n, b) => n + b.end - b.start, 0);
+  return staffIds.reduce((best, id) => (load(id) < load(best) ? id : best));
+}
+
+/** Minutes a person works on a date (hours minus breaks and time off), for utilisation. */
+export function workingMinutes(s: Schedule, staff: Staff, date: ISODate): number {
+  const day = staffDay(s, staff, date);
+  if (typeof day === "string") return 0;
+  return day.hours.end - day.hours.start - day.away.reduce((n, a) => n + Math.max(0, Math.min(a.at.end, day.hours.end) - Math.max(a.at.start, day.hours.start)), 0);
+}
+
+/** Why a person isn't working a date, or null when they are. For greying out calendar columns. */
+export function offReason(s: Schedule, staff: Staff, date: ISODate): Reason | null {
+  const day = staffDay(s, staff, date);
+  return typeof day === "string" ? day : null;
+}
