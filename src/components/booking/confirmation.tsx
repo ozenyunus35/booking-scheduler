@@ -2,7 +2,7 @@
 
 import { ArrowUpRight, CalendarPlus, CheckCircle2, Copy, Settings2 } from "lucide-react";
 import Link from "next/link";
-import { formatDayLong, formatDuration, formatTime } from "@/lib/dates";
+import { formatDayLong, formatDuration, formatTime, zoneAbbr } from "@/lib/dates";
 import { firstName, money } from "@/lib/format";
 import { bookingIcs } from "@/lib/ics";
 import type { Booking, DemoState } from "@/lib/types";
@@ -45,7 +45,7 @@ export function BookingCard({ state, booking, className }: { state: DemoState; b
         <div className="col-span-2">
           <dt className="text-xs text-muted">When</dt>
           <dd className="font-medium">
-            {formatDayLong(booking.date)}, {formatTime(booking.start)} – {formatTime(booking.end)}
+            {formatDayLong(booking.date)}, {formatTime(booking.start)} – {formatTime(booking.end)} {zoneAbbr(state.salon.timeZone)}
           </dd>
         </div>
         <div>

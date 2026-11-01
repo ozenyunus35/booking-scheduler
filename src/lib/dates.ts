@@ -91,3 +91,28 @@ export const formatDuration = (min: number) => {
   const h = Math.floor(min / 60);
   return min % 60 ? `${h} h ${min % 60} min` : `${h} h`;
 };
+
+/** "ET", "PT": the short generic name of a time zone, for labelling times. */
+export function zoneAbbr(timeZone: string, ms = Date.now()): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "shortGeneric" }).formatToParts(ms).find((p) => p.type === "timeZoneName")?.value ?? timeZone;
+  } catch {
+    return timeZone;
+  }
+}
+
+/** The city part of a time zone id: "America/New_York" → "New York". */
+export const zoneCity = (timeZone: string) => timeZone.split("/").pop()!.replace(/_/g, " ");
+
+/**
+ * The same moment on the visitor's clock, when they are in another time zone:
+ * "4:00 PM in Istanbul". Null when their clock shows the salon's time anyway.
+ */
+export function visitorTime(date: ISODate, minutes: number, salonZone: string, visitorZone: string): string | null {
+  const at = zonedToUtc(date, minutes, salonZone);
+  const fmt = (timeZone: string) => new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short", hour: "numeric", minute: "2-digit" }).format(at);
+  if (visitorZone === salonZone || fmt(visitorZone) === fmt(salonZone)) return null;
+  const sameDay = new Intl.DateTimeFormat("en-CA", { timeZone: visitorZone }).format(at) === date;
+  const local = new Intl.DateTimeFormat("en-US", { timeZone: visitorZone, ...(sameDay ? {} : { weekday: "short" }), hour: "numeric", minute: "2-digit" }).format(at);
+  return `${local} in ${zoneCity(visitorZone)}`;
+}

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { cancelBooking, canChangeOnline, findBooking, findByToken, moveBooking } from "@/lib/api";
-import { formatDayLong, formatTime } from "@/lib/dates";
+import { formatDayLong, formatTime, zoneAbbr, zoneCity } from "@/lib/dates";
 import { update, useStore } from "@/lib/store";
 import type { DemoState } from "@/lib/types";
 import { useNow } from "@/lib/use-now";
@@ -86,7 +86,7 @@ export function ManagePage() {
           <div className="animate-enter">
             <h1 className="text-xl font-semibold tracking-[-0.015em]">Pick a new time</h1>
             <p className="mt-1 text-muted">
-              Now: {formatDayLong(booking.date)}, {formatTime(booking.start)}. Same service, same professional.
+              Now: {formatDayLong(booking.date)}, {formatTime(booking.start)} {zoneAbbr(s.salon.timeZone)}. Same service, same professional. Times are in salon time ({zoneCity(s.salon.timeZone)}).
             </p>
             <div className="mt-5 rounded-xl border border-border bg-surface p-4 shadow-card sm:p-5">
               <TimePicker state={s} serviceId={booking.serviceId} staffId={booking.anyStaff ? "any" : booking.staffId} now={now} value={pick} onChange={setPick} ignoreBookingId={booking.id} />

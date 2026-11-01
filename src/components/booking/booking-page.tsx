@@ -1,10 +1,10 @@
 "use client";
 
 import { ArrowRight, Check, ChevronLeft, Sparkles, Users } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { getSlots, nextAvailable, staffFor } from "@/lib/availability";
 import { createBooking, validateClient, type ClientInput } from "@/lib/api";
-import { formatDuration, formatTime, relativeDay } from "@/lib/dates";
+import { formatDuration, formatTime, relativeDay, visitorTime, zoneAbbr, zoneCity } from "@/lib/dates";
 import { money } from "@/lib/format";
 import { bookingWindow } from "@/lib/availability";
 import { update, useStore } from "@/lib/store";
@@ -222,6 +222,12 @@ export function BookingPage() {
   const now = useNow();
   const { toast } = useToast();
   const [step, setStep] = useState(0);
+  // The visitor's own time zone is only known in the browser, after the static page has loaded.
+  const visitorZone = useSyncExternalStore(
+    () => () => {},
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    () => null,
+  );
   const [serviceId, setServiceId] = useState<string | null>(null);
   const [staffId, setStaffId] = useState<string | null>(null);
   const [time, setTime] = useState<TimeChoice | null>(null);
@@ -291,7 +297,9 @@ export function BookingPage() {
     );
   }
 
-  const whenText = time && service ? `${relativeDay(time.date, today)}, ${formatTime(time.start)} – ${formatTime(time.start + service.duration)}` : null;
+  const zone = state.salon.timeZone;
+  const whenText = time && service ? `${relativeDay(time.date, today)}, ${formatTime(time.start)} – ${formatTime(time.start + service.duration)} ${zoneAbbr(zone)}` : null;
+  const yourTime = time && visitorZone ? visitorTime(time.date, time.start, zone, visitorZone) : null;
   const staffText = staffId === "any" ? "Any professional" : person?.name;
   const canContinue = step === 0 ? !!service : step === 1 ? !!staffId : step === 2 ? !!slot : true;
 
@@ -334,7 +342,11 @@ export function BookingPage() {
                 />
               )}
             </Step>
-            <Step n={2} title="Pick a time" current={step} onEdit={() => setStep(2)} summary={whenText}>
+            <Step n={2} title="Pick a time" current={step} onEdit={() => setStep(2)} summary={whenText && (yourTime ? `${whenText} (${yourTime})` : whenText)}>
+              <p className="mb-3 text-xs text-muted" data-testid="zone-note">
+                Times are in salon time ({zoneCity(zone)}, {zoneAbbr(zone)}).
+                {visitorZone && visitorZone !== zone && ` You're in ${zoneCity(visitorZone)}: we show your local time once you pick a slot.`}
+              </p>
               {lost && <p className="mb-4 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-warning">That time was just booked by someone else. Please pick another.</p>}
               {serviceId && staffId && (
                 <TimePicker
