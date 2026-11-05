@@ -1,6 +1,7 @@
-import { checkSlot } from "./availability";
+import { checkSlot, visitFor } from "./availability";
 import { addDays, weekday, zonedNow, zonedToUtc } from "./dates";
-import type { Booking, BookingSource, Client, DayHours, DemoState, Service, Staff } from "./types";
+import { bookingMessage } from "./messages";
+import type { Booking, BookingSource, Client, DayHours, DayPart, DemoState, Message, Service, Staff } from "./types";
 
 /**
  * Synthetic demo data for Halden Hair Studio, a fictional salon. Everything is
@@ -9,7 +10,7 @@ import type { Booking, BookingSource, Client, DayHours, DemoState, Service, Staf
  * three weeks of upcoming appointments that thin out further ahead.
  */
 
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 export const TIME_ZONE = "America/New_York";
 
 const h = (hh: number, mm = 0) => hh * 60 + mm;
@@ -164,6 +165,8 @@ export function createSeed(now = Date.now()): DemoState {
     ],
     clients,
     bookings: [],
+    waitlist: [],
+    outbox: [],
   };
 
   const byId = new Map(services.map((s) => [s.id, s]));
@@ -184,6 +187,9 @@ export function createSeed(now = Date.now()): DemoState {
     }
   };
 
+  // Series go in first, so the regular slots are theirs.
+  addSeries(state, r, men, now, nowMin);
+
   for (let d = -35; d <= 21; d++) {
     const date = addDays(today, d);
     // Upcoming weeks fill up less the further out they are; Saturdays are busiest.
@@ -199,8 +205,12 @@ export function createSeed(now = Date.now()): DemoState {
           t += [45, 60, 75][Math.floor(r() * 3)];
           continue;
         }
-        const service = byId.get(pick(r, MIX[person.id]))!;
-        const base = { serviceId: service.id, staffId: person.id, date, start: t, now, enforceRules: false };
+        const main = byId.get(pick(r, MIX[person.id]))!;
+        // Color is often followed by a cut or a blowout in the same visit.
+        const finish = person.id !== "ines" && ["full-color", "roots", "gloss"].includes(main.id) && r() < 0.4 ? (main.staffIds.includes(person.id) && byId.get("womens-cut")!.staffIds.includes(person.id) ? "womens-cut" : "blowout") : null;
+        const addOnIds = finish && byId.get(finish)!.staffIds.includes(person.id) ? [finish] : [];
+        const service = visitFor(state, main.id, addOnIds)!;
+        const base = { serviceId: main.id, addOnIds, staffId: person.id, date, start: t, now, enforceRules: false };
         if (checkSlot(state, base)) {
           t += 15;
           continue;
@@ -219,9 +229,10 @@ export function createSeed(now = Date.now()): DemoState {
           id: `bk${pad(seq, 4)}`,
           ref: refFor(seq),
           token: Math.floor(r() * 2 ** 48).toString(36),
-          serviceId: service.id,
+          serviceId: main.id,
+          ...(addOnIds.length ? { addOnIds } : {}),
           staffId: person.id,
-          clientId: client(service.id, date, t, end),
+          clientId: client(main.id, date, t, end),
           date,
           start: t,
           end,
@@ -238,7 +249,99 @@ export function createSeed(now = Date.now()): DemoState {
       }
     }
   }
+  addWaitlist(state, r, women, now);
+  state.outbox = seedOutbox(state, now);
   return state;
+}
+
+/** A few regulars come back on a fixed rhythm: a series every three weeks with Theo. */
+function addSeries(state: DemoState, r: () => number, men: Client[], now: number, nowMin: number) {
+  const { date: today } = zonedNow(TIME_ZONE, now);
+  const service = state.services.find((x) => x.id === "cut-beard")!;
+  for (let k = 0; k < 3; k++) {
+    const client = men[k * 3];
+    // Start on a Monday to Wednesday (Theo works 10 to 6 then) a few weeks back, at 10, 11 or noon.
+    let first = addDays(today, -28 + k * 2);
+    while (![0, 1, 2].includes(weekday(first))) first = addDays(first, 1);
+    const start = h(10 + k);
+    const seriesId = `sr-seed-${k + 1}`;
+    for (let i = 0; i < 4; i++) {
+      const date = addDays(first, i * 21);
+      const end = start + service.duration;
+      if (checkSlot(state, { serviceId: service.id, staffId: "theo", date, start, now, enforceRules: false })) continue;
+      if (state.bookings.some((b) => b.clientId === client.id && b.date === date && b.start < end && start < b.end)) continue;
+      const past = date < today || (date === today && end <= nowMin);
+      const n = state.bookings.length + 1;
+      state.bookings.push({
+        id: `bk${pad(n, 4)}s`,
+        ref: refFor(n + 5000),
+        token: Math.floor(r() * 2 ** 48).toString(36),
+        serviceId: service.id,
+        staffId: "theo",
+        clientId: client.id,
+        date,
+        start,
+        end,
+        seriesId,
+        status: past ? "completed" : "confirmed",
+        price: service.price,
+        source: "phone",
+        anyStaff: false,
+        notes: "Every 3 weeks",
+        createdAt: zonedToUtc(addDays(first, -3), h(11), TIME_ZONE) > now ? new Date(now - 86_400_000).toISOString() : new Date(zonedToUtc(addDays(first, -3), h(11), TIME_ZONE)).toISOString(),
+      });
+    }
+  }
+}
+
+/** Clients waiting for a time on the busiest coming days. */
+function addWaitlist(state: DemoState, r: () => number, women: Client[], now: number) {
+  const { date: today } = zonedNow(TIME_ZONE, now);
+  const wants: [number, string, string, DayPart][] = [
+    [1, "balayage", "ines", "any"],
+    [1, "womens-cut", "any", "afternoon"],
+    [2, "full-color", "any", "morning"],
+    [3, "blowout", "maya", "evening"],
+  ];
+  // The nth coming day the person (or, for "any", the salon) works.
+  const workDay = (n: number, staffId: string) => {
+    let date = today;
+    for (let k = 0; k < n; ) {
+      date = addDays(date, 1);
+      const works = staffId === "any" ? weekday(date) !== 6 : !!state.staff.find((p) => p.id === staffId)?.hours[weekday(date)];
+      if (works) k++;
+    }
+    return date;
+  };
+  wants.forEach(([days, serviceId, staffId, part], i) => {
+    const date = workDay(days, staffId);
+    state.waitlist.push({
+      id: `w${i + 1}`,
+      clientId: women[(i * 5 + Math.floor(r() * 4)) % women.length].id,
+      serviceId,
+      staffId,
+      date,
+      part,
+      status: "waiting",
+      createdAt: new Date(now - (i + 1) * 5_400_000).toISOString(),
+    });
+  });
+}
+
+/** The last few days of confirmations and cancellations, as the outbox would show them. */
+function seedOutbox(state: DemoState, now: number): Message[] {
+  const out: Message[] = [];
+  const since = now - 3 * 86_400_000;
+  for (const b of state.bookings) {
+    const at = Date.parse(b.createdAt);
+    if (at < since || at > now) continue;
+    out.push({ id: "", ...bookingMessage(state, b, "confirmation", at) });
+    if (b.status === "cancelled") out.push({ id: "", ...bookingMessage(state, b, "cancelled", Math.min(now - 60_000, at + 7_200_000)) });
+  }
+  return out
+    .sort((a, b) => a.at.localeCompare(b.at))
+    .slice(-150)
+    .map((m, i) => ({ ...m, id: `m${i + 1}` }));
 }
 
 /** Short, readable booking reference: HD-7K3Q. No 0/O or 1/I to misread. */

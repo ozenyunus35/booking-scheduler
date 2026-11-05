@@ -1,9 +1,10 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Plus, Search, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Plus, Search, Users } from "lucide-react";
 import { useMemo, useState } from "react";
-import { bookingWindow } from "@/lib/availability";
+import { bookingTitle, bookingWindow } from "@/lib/availability";
 import { formatDate, formatTime, relativeDay } from "@/lib/dates";
+import { clientsCsv, download } from "@/lib/csv";
 import { money } from "@/lib/format";
 import { clientSummary } from "@/lib/stats";
 import { update, useStore } from "@/lib/store";
@@ -79,7 +80,6 @@ function ClientModal({ s, client, now, onClose, onBook }: { s: DemoState; client
           {sum.visits.length ? (
             <ul className="divide-y divide-border rounded-lg border border-border">
               {sum.visits.slice(0, 30).map((b) => {
-                const service = s.services.find((x) => x.id === b.serviceId);
                 const staff = s.staff.find((p) => p.id === b.staffId);
                 return (
                   <li key={b.id} className="flex items-center gap-3 px-3 py-2">
@@ -88,7 +88,7 @@ function ClientModal({ s, client, now, onClose, onBook }: { s: DemoState; client
                       <span className="block text-faint">{formatTime(b.start)}</span>
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{service?.name}</span>
+                      <span className="block truncate font-medium">{bookingTitle(s, b)}</span>
                       <span className="block truncate text-xs text-muted">with {staff?.name}</span>
                     </span>
                     <span className="hidden text-xs tabular-nums sm:block">{money(b.price)}</span>
@@ -137,7 +137,17 @@ export function Clients() {
 
   return (
     <div>
-      <PageHeader title="Clients" description={`${s.clients.length} clients · ${recent} visited this month`} actions={<Button variant="primary" onClick={() => setBooking("")}><Plus /> New booking</Button>} />
+      <PageHeader title="Clients" description={`${s.clients.length} clients · ${recent} visited this month`} actions={
+          <>
+            <Button onClick={() => download(`halden-clients-${today}.csv`, clientsCsv(s))}>
+              <Download /> Export CSV
+            </Button>
+            <Button variant="primary" onClick={() => setBooking("")}>
+              <Plus /> New booking
+            </Button>
+          </>
+        }
+      />
       <Card>
         <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
           <div className="relative min-w-0 flex-1 sm:max-w-xs">

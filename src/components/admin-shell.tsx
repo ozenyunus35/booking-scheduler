@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowUpRight, CalendarDays, ChevronRight, LayoutDashboard, Menu, RotateCcw, Scissors, Settings, UserRound, Users, X } from "lucide-react";
+import { ArrowUpRight, CalendarDays, ChevronRight, LayoutDashboard, ListTodo, Menu, MessagesSquare, RotateCcw, Scissors, Settings, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { bookingWindow } from "@/lib/availability";
+import { bookingTitle, bookingWindow } from "@/lib/availability";
+import { waitlistOpenings } from "@/lib/api";
 import { formatTime, relativeDay } from "@/lib/dates";
 import { firstName } from "@/lib/format";
 import { resetDemo, useStore } from "@/lib/store";
@@ -20,6 +21,8 @@ export const NAV = [
   { href: "/admin", label: "Calendar", icon: CalendarDays },
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/clients", label: "Clients", icon: Users },
+  { href: "/admin/waitlist", label: "Waitlist", icon: ListTodo },
+  { href: "/admin/messages", label: "Messages", icon: MessagesSquare },
   { href: "/admin/services", label: "Services", icon: Scissors },
   { href: "/admin/team", label: "Team", icon: UserRound },
   { href: "/admin/settings", label: "Settings", icon: Settings },
@@ -30,6 +33,7 @@ const OWNER = { name: "Maya Lindqvist", title: "Owner" };
 function Sidebar({ state, path, now, onNavigate }: { state: DemoState; path: string; now: number; onNavigate?: () => void }) {
   const { today, nowMinutes } = bookingWindow(state, now);
   const left = state.bookings.filter((b) => b.date === today && b.status === "confirmed" && b.end > nowMinutes).length;
+  const ready = state.waitlist.filter((e) => e.date >= today && waitlistOpenings(state, e, now).length > 0).length;
   return (
     <nav aria-label="Main" className="flex flex-1 flex-col gap-px overflow-y-auto px-2 py-2">
       {NAV.map((n) => {
@@ -47,6 +51,11 @@ function Sidebar({ state, path, now, onNavigate }: { state: DemoState; path: str
             {n.href === "/admin" && left > 0 && (
               <span className="ml-auto rounded bg-accent-soft px-1.5 text-[11px] font-medium text-accent tabular-nums" aria-label={`${left} appointments left today`}>
                 {left}
+              </span>
+            )}
+            {n.href === "/admin/waitlist" && ready > 0 && (
+              <span className="ml-auto rounded bg-success/15 px-1.5 text-[11px] font-medium text-success tabular-nums" aria-label={`${ready} can be booked now`}>
+                {ready}
               </span>
             )}
           </Link>
@@ -78,10 +87,9 @@ function useArrivals(state: DemoState | null) {
       if (b.source !== "online") continue;
       markArrived(b.id);
       const client = state.clients.find((c) => c.id === b.clientId);
-      const service = state.services.find((s) => s.id === b.serviceId);
       const staff = state.staff.find((p) => p.id === b.staffId);
       const { today } = bookingWindow(state, Date.now());
-      toast(`New online booking: ${client?.name ?? "A client"}, ${service?.name} with ${firstName(staff?.name ?? "")}, ${relativeDay(b.date, today)} ${formatTime(b.start)}.`);
+      toast(`New online booking: ${client?.name ?? "A client"}, ${bookingTitle(state, b)} with ${firstName(staff?.name ?? "")}, ${relativeDay(b.date, today)} ${formatTime(b.start)}.`);
     }
   }, [state, toast]);
 }

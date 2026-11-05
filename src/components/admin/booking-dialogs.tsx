@@ -1,10 +1,10 @@
 "use client";
 
-import { Ban, CalendarClock, Check, Globe, Mail, Phone, UserX } from "lucide-react";
+import { AlertTriangle, Ban, CalendarClock, Check, Globe, ListTodo, Mail, Phone, Repeat, UserX } from "lucide-react";
 import { useState } from "react";
-import { bookingWindow, getSlots, staffFor } from "@/lib/availability";
-import { cancelBooking, createBooking, LIMITS, moveBooking, setStatus, validateClient } from "@/lib/api";
-import { formatDayLong, formatDuration, formatTime } from "@/lib/dates";
+import { assignStaff, bookingTitle, bookingWindow, getSlots, staffFor, visitFor } from "@/lib/availability";
+import { cancelBooking, cancelSeries, createBooking, createSeries, LIMITS, moveBooking, planSeries, SERIES_WEEKS, setStatus, validateClient } from "@/lib/api";
+import { formatDay, formatDayLong, formatDuration, formatTime } from "@/lib/dates";
 import { firstName, money } from "@/lib/format";
 import { update } from "@/lib/store";
 import type { Booking, BookingSource, BookingStatus, Category, DemoState, ISODate } from "@/lib/types";
@@ -12,7 +12,7 @@ import { useToast } from "../toast";
 import { Avatar, Badge, Button, Field, Modal, cx, inputClass, type Tone } from "../ui";
 
 export const STATUS_TONE: Record<BookingStatus, Tone> = { confirmed: "accent", completed: "success", cancelled: "neutral", "no-show": "danger" };
-export const SOURCE_LABEL: Record<BookingSource, string> = { online: "Online", phone: "Phone", "walk-in": "Walk-in" };
+export const SOURCE_LABEL: Record<BookingSource, string> = { online: "Online", phone: "Phone", "walk-in": "Walk-in", waitlist: "Waitlist" };
 const CATEGORIES: Category[] = ["Cuts", "Color", "Styling", "Barbering", "Treatments"];
 
 export const selectClass = cx(inputClass, "pr-7");
@@ -20,8 +20,8 @@ export const selectClass = cx(inputClass, "pr-7");
 export const inlineSelectClass = selectClass.replace("w-full", "w-auto");
 
 /** Free start times for the salon's own calendar (no online notice rules), always including `keep`. */
-function timeOptions(state: DemoState, serviceId: string, staffId: string, date: ISODate, now: number, ignoreBookingId?: string, keep?: number) {
-  const starts = getSlots(state, { serviceId, staffId, date, now, ignoreBookingId, enforceRules: false }).map((s) => s.start);
+function timeOptions(state: DemoState, serviceId: string, staffId: string, date: ISODate, now: number, ignoreBookingId?: string, keep?: number, addOnIds?: string[]) {
+  const starts = getSlots(state, { serviceId, addOnIds, staffId, date, now, ignoreBookingId, enforceRules: false }).map((s) => s.start);
   if (keep != null && !starts.includes(keep)) starts.push(keep);
   return starts.sort((a, b) => a - b);
 }
@@ -49,6 +49,10 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
   const client = state.clients.find((c) => c.id === booking.clientId);
   const service = state.services.find((s) => s.id === booking.serviceId);
   const staff = state.staff.find((p) => p.id === booking.staffId);
+  const title = bookingTitle(state, booking);
+  const length = booking.end - booking.start;
+  const series = booking.seriesId ? state.bookings.filter((b) => b.seriesId === booking.seriesId).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start) : [];
+  const noShows = state.bookings.filter((b) => b.clientId === booking.clientId && b.status === "no-show").length;
   const [edit, setEdit] = useState(false);
   const [to, setTo] = useState({ staffId: booking.staffId, date: booking.date, start: booking.start });
   const { today, nowMinutes } = bookingWindow(state, now);
@@ -68,7 +72,7 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
     }
   };
 
-  const options = edit && service ? timeOptions(state, service.id, to.staffId, to.date, now, booking.id, to.date === booking.date && to.staffId === booking.staffId ? booking.start : undefined) : [];
+  const options = edit && service ? timeOptions(state, service.id, to.staffId, to.date, now, booking.id, to.date === booking.date && to.staffId === booking.staffId ? booking.start : undefined, booking.addOnIds) : [];
 
   return (
     <Modal
@@ -90,8 +94,22 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
         ) : (
           <>
             {live && (
-              <Button variant="ghost" className="mr-auto text-danger hover:text-danger" onClick={() => act((d) => cancelBooking(d, booking.id, Date.now(), false), "Booking cancelled.")}>
+              <Button variant="ghost" className={cx("text-danger hover:text-danger", !booking.seriesId && "mr-auto")} onClick={() => act((d) => cancelBooking(d, booking.id, Date.now(), false), "Booking cancelled.")}>
                 <Ban /> Cancel booking
+              </Button>
+            )}
+            {live && booking.seriesId && (
+              <Button
+                variant="ghost"
+                className="mr-auto text-danger hover:text-danger"
+                onClick={() =>
+                  act((d) => {
+                    const r = cancelSeries(d, booking.id, Date.now());
+                    return r.ok ? { ok: true } : r;
+                  }, "This and the later appointments in the series are cancelled.")
+                }
+              >
+                <Repeat /> Cancel this and later
               </Button>
             )}
             {live && started && (
@@ -119,7 +137,7 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
           <Field label="Staff">
             {(id) => (
               <select id={id} value={to.staffId} onChange={(e) => setTo({ ...to, staffId: e.target.value })} className={selectClass}>
-                {staffFor(state, service.id).map((p) => (
+                {staffFor(state, service.id, booking.addOnIds).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
@@ -137,7 +155,7 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
                   </option>
                   {options.map((t) => (
                     <option key={t} value={t}>
-                      {formatTime(t)} – {formatTime(t + service.duration)}
+                      {formatTime(t)} – {formatTime(t + length)}
                     </option>
                   ))}
                 </select>
@@ -150,19 +168,40 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={STATUS_TONE[booking.status]}>{booking.status}</Badge>
             <span className="inline-flex h-5 items-center gap-1 rounded-md border border-border px-1.5 text-xs text-muted">
-              {booking.source === "online" ? <Globe className="size-3" aria-hidden /> : booking.source === "phone" ? <Phone className="size-3" aria-hidden /> : null}
+              {booking.source === "online" ? <Globe className="size-3" aria-hidden /> : booking.source === "phone" ? <Phone className="size-3" aria-hidden /> : booking.source === "waitlist" ? <ListTodo className="size-3" aria-hidden /> : null}
               {SOURCE_LABEL[booking.source]}
             </span>
-            {booking.anyStaff && <span className="text-xs text-muted">Client chose any professional</span>}
+            {noShows > 0 && (
+              <Badge tone="danger">
+                <AlertTriangle className="size-3" aria-hidden /> {noShows} no-show{noShows === 1 ? "" : "s"}
+              </Badge>
+            )}
+            {booking.anyStaff && <span className="text-xs text-muted">{booking.source === "online" ? "Client chose any professional" : "Given to whoever was free"}</span>}
             <span className="ml-auto font-mono text-xs text-muted">{booking.ref}</span>
           </div>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
             <div className="col-span-2">
               <dt className="text-xs text-muted">Service</dt>
               <dd className="font-medium">
-                {service?.name} <span className="font-normal text-muted">· {formatDuration(booking.end - booking.start)} · {money(booking.price)}</span>
+                {title} <span className="font-normal text-muted">· {formatDuration(length)} · {money(booking.price)}</span>
               </dd>
             </div>
+            {series.length > 1 && (
+              <div className="col-span-2">
+                <dt className="text-xs text-muted">Repeats</dt>
+                <dd className="flex flex-wrap items-center gap-1.5">
+                  <Repeat className="size-3.5 text-faint" aria-hidden />
+                  <span className="font-medium">
+                    {series.findIndex((b) => b.id === booking.id) + 1} of {series.length}
+                  </span>
+                  {series.map((b) => (
+                    <span key={b.id} className={cx("rounded border px-1.5 text-xs tabular-nums", b.id === booking.id ? "border-accent text-accent" : b.status === "cancelled" ? "border-border text-faint line-through" : "border-border text-muted")}>
+                      {formatDay(b.date)}
+                    </span>
+                  ))}
+                </dd>
+              </div>
+            )}
             <div className="col-span-2">
               <dt className="text-xs text-muted">When</dt>
               <dd className="font-medium">
@@ -201,7 +240,7 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
             {(booking.notes || client?.notes) && (
               <div className="col-span-2 rounded-md bg-surface-2 px-3 py-2">
                 <dt className="text-xs text-muted">Notes</dt>
-                {booking.notes && <dd>{booking.notes}</dd>}
+                {booking.notes && <dd className="whitespace-pre-line">{booking.notes}</dd>}
                 {client?.notes && <dd className="text-muted">Client: {client.notes}</dd>}
               </div>
             )}
@@ -233,13 +272,22 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
   const [phone, setPhone] = useState(preset?.phone ?? "");
   const [source, setSource] = useState<BookingSource>("phone");
   const [notes, setNotes] = useState("");
+  const [addOn, setAddOn] = useState("");
+  const [weeks, setWeeks] = useState(0);
+  const [count, setCount] = useState(6);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const match = state.clients.find((c) => c.name.toLowerCase() === name.trim().toLowerCase());
-  const team = staffFor(state, serviceId);
+  const category = state.services.find((x) => x.id === serviceId)?.category;
+  const addOnOptions = state.services.filter((x) => x.active && x.id !== serviceId && x.category !== category && (visitFor(state, serviceId, [x.id])?.staffIds.length ?? 0) > 0);
+  const addOnIds = addOn && addOnOptions.some((x) => x.id === addOn) ? [addOn] : [];
+  const team = staffFor(state, serviceId, addOnIds);
   const validStaff = staffId === "any" || team.some((p) => p.id === staffId) ? staffId : "any";
-  const options = timeOptions(state, serviceId, validStaff, date, now);
-  const service = state.services.find((s) => s.id === serviceId)!;
+  const options = timeOptions(state, serviceId, validStaff, date, now, undefined, undefined, addOnIds);
+  const visit = visitFor(state, serviceId, addOnIds)!;
+  // Who would take the first appointment, so the series can be checked against their calendar.
+  const firstStaff = start == null || !options.includes(start) ? null : validStaff !== "any" ? validStaff : assignStaff(state, date, getSlots(state, { serviceId, addOnIds, staffId: "any", date, now, enforceRules: false }).find((x) => x.start === start)?.staffIds ?? []);
+  const plan = weeks && firstStaff && start != null ? planSeries(state, { serviceId, addOnIds, staffId: firstStaff, date, start }, weeks, count, now) : [];
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -248,13 +296,27 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
     if (start == null || !options.includes(start)) errs.start = "Choose a free time.";
     setErrors(errs);
     if (Object.keys(errs).length) return;
+    const input = { serviceId, addOnIds, staffId: validStaff, date, start: start!, client: match ? { id: match.id } : { name, email, phone }, notes, source, online: false };
+    if (weeks) {
+      let r: ReturnType<typeof createSeries> | undefined;
+      update((d) => {
+        r = createSeries(d, input, weeks, count, Date.now());
+      });
+      if (!r) return;
+      if (!r.ok) return toast(r.error, "error");
+      const skipped = r.value.skipped.length;
+      toast(`Booked ${r.value.booked.length} appointments for ${firstName(name)}, every ${weeks} weeks${skipped ? `; ${skipped} date${skipped === 1 ? "" : "s"} didn't fit` : ""}.`);
+      onCreated?.(r.value.booked[0]);
+      onClose();
+      return;
+    }
     let r: ReturnType<typeof createBooking> | undefined;
     update((d) => {
-      r = createBooking(d, { serviceId, staffId: validStaff, date, start: start!, client: match ? { id: match.id } : { name, email, phone }, notes, source, online: false }, Date.now());
+      r = createBooking(d, input, Date.now());
     });
     if (!r) return;
     if (!r.ok) return toast(r.error, "error");
-    toast(`Booked ${service.name} for ${firstName(name)} at ${formatTime(start!)}.`);
+    toast(`Booked ${visit.name} for ${firstName(name)} at ${formatTime(start!)}.`);
     onCreated?.(r.value);
     onClose();
   };
@@ -298,9 +360,19 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
             </Field>
           </>
         )}
-        <div className="sm:col-span-2">
-          <Field label="Service">{(id) => <ServiceSelect state={state} id={id} value={serviceId} onChange={setServiceId} />}</Field>
-        </div>
+        <Field label="Service">{(id) => <ServiceSelect state={state} id={id} value={serviceId} onChange={setServiceId} />}</Field>
+        <Field label="Then (same visit)" hint={addOnIds.length ? `${formatDuration(visit.duration)} · ${money(visit.price)} in all` : undefined}>
+          {(id, d) => (
+            <select id={id} aria-describedby={d} value={addOnIds[0] ?? ""} onChange={(e) => setAddOn(e.target.value)} className={selectClass}>
+              <option value="">Nothing else</option>
+              {addOnOptions.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name} · {formatDuration(x.duration)} · {money(x.price)}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
         <Field label="Staff">
           {(id) => (
             <select id={id} value={validStaff} onChange={(e) => setStaffId(e.target.value)} className={selectClass}>
@@ -339,6 +411,54 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
         <div className="sm:col-span-2">
           <Field label="Notes">{(id) => <input id={id} maxLength={LIMITS.notes} value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} placeholder="Optional" />}</Field>
         </div>
+        <Field label="Repeat">
+          {(id) => (
+            <select id={id} value={weeks} onChange={(e) => setWeeks(Number(e.target.value))} className={selectClass}>
+              <option value={0}>Doesn&apos;t repeat</option>
+              {SERIES_WEEKS.map((w) => (
+                <option key={w} value={w}>
+                  Every {w} weeks
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+        {weeks > 0 && (
+          <Field label="Appointments in all">
+            {(id) => (
+              <select id={id} value={count} onChange={(e) => setCount(Number(e.target.value))} className={selectClass}>
+                {Array.from({ length: 11 }, (_, i) => i + 2).map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+        )}
+        {weeks > 0 && (
+          <div className="sm:col-span-2" aria-live="polite">
+            {plan.length ? (
+              <ul className="divide-y divide-border rounded-md border border-border text-xs" aria-label="Series preview">
+                <li className="flex items-center gap-2 px-3 py-1.5">
+                  <Check className="size-3.5 text-success" aria-hidden />
+                  <span className="w-28 shrink-0 font-medium">{formatDay(date)}</span>
+                  {formatTime(start!)}
+                </li>
+                {plan.map((p) => (
+                  <li key={p.date} className="flex items-center gap-2 px-3 py-1.5">
+                    {p.status === "ok" ? <Check className="size-3.5 text-success" aria-hidden /> : p.status === "moved" ? <CalendarClock className="size-3.5 text-warning" aria-hidden /> : <Ban className="size-3.5 text-danger" aria-hidden />}
+                    <span className="w-28 shrink-0 font-medium">{formatDay(p.date)}</span>
+                    <span className={cx(p.status === "skipped" && "text-faint line-through")}>{formatTime(p.start)}</span>
+                    {p.status !== "ok" && <span className="truncate text-muted">{p.status === "moved" ? `moved: ${p.reason}` : `skipped: ${p.reason}`}</span>}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-muted">Choose a start time to see every date in the series.</p>
+            )}
+          </div>
+        )}
         <button type="submit" hidden />
       </form>
     </Modal>

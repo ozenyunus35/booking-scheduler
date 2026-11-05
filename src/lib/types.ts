@@ -54,7 +54,7 @@ export interface TimeOff {
 }
 
 export type BookingStatus = "confirmed" | "completed" | "cancelled" | "no-show";
-export type BookingSource = "online" | "phone" | "walk-in";
+export type BookingSource = "online" | "phone" | "walk-in" | "waitlist";
 
 export interface Booking {
   id: string;
@@ -62,11 +62,15 @@ export interface Booking {
   /** Secret for the client's "manage booking" link, so the link carries no personal data. */
   token: string;
   serviceId: string;
+  /** Services done right after the main one in the same visit, e.g. a cut after color. */
+  addOnIds?: string[];
   staffId: string;
   clientId: string;
   date: ISODate;
   start: number;
   end: number;
+  /** Shared by the appointments of a repeating series. */
+  seriesId?: string;
   status: BookingStatus;
   price: number;
   source: BookingSource;
@@ -103,6 +107,39 @@ export interface Salon {
   currency: string;
 }
 
+/** Part of the day a waitlisted client can come in. */
+export type DayPart = "any" | "morning" | "afternoon" | "evening";
+
+export interface WaitlistEntry {
+  id: string;
+  clientId: string;
+  serviceId: string;
+  addOnIds?: string[];
+  /** A staff id or "any". */
+  staffId: string;
+  date: ISODate;
+  part: DayPart;
+  status: "waiting" | "booked" | "removed";
+  bookingId?: string;
+  /** When the client was last told a time opened up, so they aren't messaged twice for the same day. */
+  notifiedAt?: string;
+  createdAt: string;
+}
+
+export type MessageKind = "confirmation" | "rescheduled" | "cancelled" | "waitlist-joined" | "slot-open" | "series";
+
+/** A message the salon would send. In the demo they are only listed in the outbox. */
+export interface Message {
+  id: string;
+  at: string;
+  channel: "email" | "sms";
+  kind: MessageKind;
+  clientId: string;
+  bookingId?: string;
+  subject: string;
+  body: string;
+}
+
 export interface DemoState {
   version: number;
   seededOn: ISODate;
@@ -113,4 +150,6 @@ export interface DemoState {
   timeOff: TimeOff[];
   clients: Client[];
   bookings: Booking[];
+  waitlist: WaitlistEntry[];
+  outbox: Message[];
 }

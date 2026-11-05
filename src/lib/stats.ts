@@ -1,4 +1,4 @@
-import { bookingWindow, isLive, workingMinutes } from "./availability";
+import { bookingServiceIds, bookingWindow, isLive, workingMinutes } from "./availability";
 import { addDays, weekdayShort } from "./dates";
 import type { Booking, BookingSource, DemoState, ISODate } from "./types";
 
@@ -53,15 +53,21 @@ export function overview(s: DemoState, now: number) {
   }
 
   const recent = s.bookings.filter((b) => inRange(b, ...last30) && b.status !== "cancelled");
-  const sources = (["online", "phone", "walk-in"] as BookingSource[]).map((source) => ({ source, count: recent.filter((b) => b.source === source).length }));
+  const sources = (["online", "phone", "walk-in", "waitlist"] as BookingSource[]).map((source) => ({ source, count: recent.filter((b) => b.source === source).length }));
 
   const byService = new Map<string, { revenue: number; count: number }>();
   for (const b of s.bookings) {
     if (b.status !== "completed" || !inRange(b, ...last30)) continue;
-    const row = byService.get(b.serviceId) ?? { revenue: 0, count: 0 };
-    row.revenue += b.price;
-    row.count++;
-    byService.set(b.serviceId, row);
+    // A visit with add-ons splits its price over its services by their list prices.
+    const ids = bookingServiceIds(b);
+    const list = ids.map((id) => s.services.find((x) => x.id === id)?.price ?? 0);
+    const total = list.reduce((n, p) => n + p, 0) || 1;
+    ids.forEach((id, i) => {
+      const row = byService.get(id) ?? { revenue: 0, count: 0 };
+      row.revenue += (b.price * list[i]) / total;
+      row.count++;
+      byService.set(id, row);
+    });
   }
   const topServices = [...byService.entries()]
     .map(([id, v]) => ({ service: s.services.find((x) => x.id === id), ...v }))

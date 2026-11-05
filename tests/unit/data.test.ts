@@ -148,7 +148,7 @@ describe("calendar file", () => {
   it("writes the appointment in UTC with a reminder", () => {
     const s = createSeed(NOW);
     const b = { ...s.bookings[0], date: "2026-11-02", start: 600, end: 645 };
-    const ics = bookingIcs(b, s.services[1], s.staff[1], s.salon, "https://example.com/manage", NOW);
+    const ics = bookingIcs(b, s.services[1].name, s.staff[1], s.salon, "https://example.com/manage", NOW);
     expect(ics).toContain("DTSTART:20261102T150000Z");
     expect(ics).toContain("DTEND:20261102T154500Z");
     expect(ics).toContain("SUMMARY:Men's cut with Theo");

@@ -1,17 +1,17 @@
 "use client";
 
-import { ArrowRight, Check, ChevronLeft, Sparkles, Users } from "lucide-react";
+import { ArrowRight, BellRing, Check, ChevronLeft, Plus, Sparkles, Users } from "lucide-react";
 import { useMemo, useState, useSyncExternalStore } from "react";
-import { getSlots, nextAvailable, staffFor } from "@/lib/availability";
-import { createBooking, LIMITS, validateClient, type ClientInput } from "@/lib/api";
-import { formatDuration, formatTime, relativeDay, visitorTime, zoneAbbr, zoneCity } from "@/lib/dates";
+import { getSlots, nextAvailable, staffFor, visitFor, type Visit } from "@/lib/availability";
+import { createBooking, joinWaitlist, LIMITS, validateClient, type ClientInput } from "@/lib/api";
+import { formatDay, formatDuration, formatTime, relativeDay, visitorTime, zoneAbbr, zoneCity } from "@/lib/dates";
 import { money } from "@/lib/format";
 import { bookingWindow } from "@/lib/availability";
 import { update, useStore } from "@/lib/store";
-import type { Booking, Category, DemoState, Service } from "@/lib/types";
+import type { Booking, Category, DayPart, DemoState, ISODate, Service, WaitlistEntry } from "@/lib/types";
 import { useNow } from "@/lib/use-now";
 import { useToast } from "../toast";
-import { Avatar, Button, Field, Spinner, cx, inputClass } from "../ui";
+import { Avatar, Button, Field, Modal, Spinner, cx, inputClass } from "../ui";
 import { Confirmation } from "./confirmation";
 import { DemoBar, SalonHeader } from "./site-header";
 import { TimePicker, type TimeChoice } from "./time-picker";
@@ -94,14 +94,14 @@ function ServiceList({ services, value, onPick }: { services: Service[]; value: 
   );
 }
 
-function StaffList({ state, serviceId, now, value, onPick }: { state: DemoState; serviceId: string; now: number; value: string | null; onPick: (id: string) => void }) {
-  const team = staffFor(state, serviceId);
+function StaffList({ state, serviceId, addOnIds, now, value, onPick }: { state: DemoState; serviceId: string; addOnIds: string[]; now: number; value: string | null; onPick: (id: string) => void }) {
+  const team = staffFor(state, serviceId, addOnIds);
   const { today } = bookingWindow(state, now);
   const options = [{ id: "any", name: "Any professional", role: "Whoever is free first", bio: "" }, ...team];
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       {options.map((p) => {
-        const next = nextAvailable(state, { serviceId, staffId: p.id, now });
+        const next = nextAvailable(state, { serviceId, addOnIds, staffId: p.id, now });
         const on = value === p.id;
         return (
           <button
@@ -162,6 +162,114 @@ function QuickPicks({ state, now, onPick }: { state: DemoState; now: number; onP
         ))}
       </div>
     </div>
+  );
+}
+
+/** Services from other categories that can follow the chosen one in the same visit, with someone who does both. */
+function AddOns({ state, serviceId, value, onChange }: { state: DemoState; serviceId: string; value: string[]; onChange: (ids: string[]) => void }) {
+  const category = state.services.find((x) => x.id === serviceId)?.category;
+  const options = state.services.filter((x) => x.active && x.id !== serviceId && x.category !== category && (visitFor(state, serviceId, [...value.filter((id) => id !== x.id), x.id])?.staffIds.length ?? 0) > 0);
+  if (!options.length) return null;
+  return (
+    <div className="mb-4">
+      <p className="mb-2 text-xs font-medium text-muted">Add to this visit (optional), done right after by the same person</p>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Add a service to this visit">
+        {options.map((x) => {
+          const on = value.includes(x.id);
+          const full = !on && value.length >= 2;
+          return (
+            <button
+              key={x.id}
+              type="button"
+              disabled={full}
+              aria-pressed={on}
+              onClick={() => onChange(on ? value.filter((id) => id !== x.id) : [...value, x.id])}
+              className={cx(
+                "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors duration-150 disabled:opacity-40",
+                on ? "border-accent bg-accent-soft text-accent" : "border-border text-muted hover:border-border-strong hover:text-text",
+              )}
+            >
+              {on ? <Check className="size-3.5" aria-hidden /> : <Plus className="size-3.5" aria-hidden />}
+              {x.name}
+              <span className="text-faint">
+                {formatDuration(x.duration)} · {money(x.price)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const PART_LABEL: Record<DayPart, string> = { any: "Any time", morning: "Morning (before 12)", afternoon: "Afternoon (12–5)", evening: "Evening (after 5)" };
+
+/** A full day: leave contact details and the part of the day that works, and get a text if it opens up. */
+function WaitlistDialog({ state, serviceId, addOnIds, staffId, date, client, setClient, onClose, onJoined }: { state: DemoState; serviceId: string; addOnIds: string[]; staffId: string; date: ISODate; client: ClientInput; setClient: (c: ClientInput) => void; onClose: () => void; onJoined: (e: WaitlistEntry) => void }) {
+  const [part, setPart] = useState<DayPart>("any");
+  const [errors, setErrors] = useState<Partial<Record<keyof ClientInput, string>>>({});
+  const [error, setError] = useState<string | null>(null);
+  const visit = visitFor(state, serviceId, addOnIds);
+  const set = (k: keyof ClientInput) => (e: React.ChangeEvent<HTMLInputElement>) => setClient({ ...client, [k]: e.target.value });
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const errs = validateClient(client);
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+    let r: ReturnType<typeof joinWaitlist> | undefined;
+    update((d) => {
+      r = joinWaitlist(d, { serviceId, addOnIds, staffId, date, part, client }, Date.now());
+    });
+    if (r?.ok) onJoined(r.value);
+    else if (r) setError(r.error);
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Waitlist for ${formatDay(date)}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" type="submit" form="waitlist-form">
+            Join the waitlist
+          </Button>
+        </>
+      }
+    >
+      <form id="waitlist-form" onSubmit={submit} noValidate className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <p className="text-muted sm:col-span-2">
+          {visit?.name} with {staffId === "any" ? "any professional" : state.staff.find((p) => p.id === staffId)?.name}. If someone cancels, we text everyone waiting for that time; the first to call gets it.
+        </p>
+        <fieldset className="sm:col-span-2">
+          <legend className="mb-2 text-xs font-medium text-muted">When can you come in?</legend>
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+            {(Object.keys(PART_LABEL) as DayPart[]).map((p) => (
+              <label key={p} className={cx("flex h-9 cursor-pointer items-center justify-center rounded-md border px-2 text-center text-xs font-medium", part === p ? "border-accent bg-accent-soft text-accent" : "border-border text-muted hover:border-border-strong")}>
+                <input type="radio" name="part" value={p} checked={part === p} onChange={() => setPart(p)} className="sr-only" />
+                {PART_LABEL[p]}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <div className="sm:col-span-2">
+          <Field label="Full name" error={errors.name}>
+            {(fid, d) => <input id={fid} autoComplete="name" value={client.name} maxLength={LIMITS.name} onChange={set("name")} aria-invalid={!!errors.name} aria-describedby={d} className={cx(inputClass, "h-9")} />}
+          </Field>
+        </div>
+        <Field label="Email" error={errors.email}>
+          {(fid, d) => <input id={fid} type="email" autoComplete="email" value={client.email} maxLength={LIMITS.email} onChange={set("email")} aria-invalid={!!errors.email} aria-describedby={d} className={cx(inputClass, "h-9")} />}
+        </Field>
+        <Field label="Mobile phone" error={errors.phone} hint="We text you when a time opens up.">
+          {(fid, d) => <input id={fid} type="tel" autoComplete="tel" value={client.phone} maxLength={LIMITS.phone} onChange={set("phone")} aria-invalid={!!errors.phone} aria-describedby={d} className={cx(inputClass, "h-9")} />}
+        </Field>
+        {error && (
+          <p className="text-danger sm:col-span-2" role="alert">
+            {error}
+          </p>
+        )}
+      </form>
+    </Modal>
   );
 }
 
@@ -229,6 +337,9 @@ export function BookingPage() {
     () => null,
   );
   const [serviceId, setServiceId] = useState<string | null>(null);
+  const [addOnIds, setAddOnIds] = useState<string[]>([]);
+  const [waitDate, setWaitDate] = useState<ISODate | null>(null);
+  const [waiting, setWaiting] = useState<WaitlistEntry | null>(null);
   const [staffId, setStaffId] = useState<string | null>(null);
   const [time, setTime] = useState<TimeChoice | null>(null);
   const [client, setClient] = useState<ClientInput>({ name: "", email: "", phone: "" });
@@ -239,18 +350,20 @@ export function BookingPage() {
   // A time chosen here can be taken in another tab (or by the salon) at any moment.
   const slot = useMemo(() => {
     if (!state || !serviceId || !staffId || !time) return null;
-    return getSlots(state, { serviceId, staffId, date: time.date, now }).find((s) => s.start === time.start) ?? null;
-  }, [state, serviceId, staffId, time, now]);
+    return getSlots(state, { serviceId, addOnIds, staffId, date: time.date, now }).find((s) => s.start === time.start) ?? null;
+  }, [state, serviceId, addOnIds, staffId, time, now]);
   const lost = !!time && !slot && !done;
 
   if (!state || !now) return <Spinner label="Loading booking page" />;
 
   const service = state.services.find((s) => s.id === serviceId) ?? null;
+  const visit = serviceId ? visitFor(state, serviceId, addOnIds) : null;
   const person = state.staff.find((p) => p.id === staffId) ?? null;
   const { today } = bookingWindow(state, now);
 
   const pickService = (id: string) => {
     setServiceId(id);
+    setAddOnIds([]);
     if (staffId && staffId !== "any" && !state.services.find((s) => s.id === id)?.staffIds.includes(staffId)) setStaffId(null);
     setTime(null);
     setStep(staffId && (staffId === "any" || state.services.find((s) => s.id === id)?.staffIds.includes(staffId)) ? 2 : 1);
@@ -264,7 +377,7 @@ export function BookingPage() {
     if (Object.keys(errs).length) return;
     let result: ReturnType<typeof createBooking> | undefined;
     update((d) => {
-      result = createBooking(d, { serviceId, staffId, date: time.date, start: time.start, client, notes, source: "online", online: true }, Date.now());
+      result = createBooking(d, { serviceId, addOnIds, staffId, date: time.date, start: time.start, client, notes, source: "online", online: true }, Date.now());
     });
     if (result?.ok) {
       setDone(result.value);
@@ -289,6 +402,7 @@ export function BookingPage() {
             setDone(null);
             setStep(0);
             setServiceId(null);
+            setAddOnIds([]);
             setStaffId(null);
             setTime(null);
             setNotes("");
@@ -298,8 +412,38 @@ export function BookingPage() {
     );
   }
 
+  if (waiting) {
+    const v = visitFor(state, waiting.serviceId, waiting.addOnIds);
+    return (
+      <>
+        <DemoBar />
+        <SalonHeader state={state} now={now} compact />
+        <main id="main" className="mx-auto max-w-xl animate-rise px-4 py-10 text-center sm:py-14">
+          <BellRing className="mx-auto mb-3 size-9 text-accent" strokeWidth={1.75} aria-hidden />
+          <h1 className="text-xl font-semibold tracking-[-0.015em]">You&apos;re on the waitlist</h1>
+          <p className="mt-2 text-muted">
+            {v?.name} on {formatDay(waiting.date)}
+            {waiting.part !== "any" && `, ${waiting.part}`}. If a time opens up, we&apos;ll text {client.phone.trim()} straight away. In this demo the text shows in the salon&apos;s Messages page.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <Button
+              variant="primary"
+              onClick={() => {
+                setWaiting(null);
+                setStep(2);
+              }}
+            >
+              Pick another day
+            </Button>
+            <Button onClick={() => window.open(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/admin/waitlist/`, "_blank")}>See the salon&apos;s waitlist</Button>
+          </div>
+        </main>
+      </>
+    );
+  }
+
   const zone = state.salon.timeZone;
-  const whenText = time && service ? `${relativeDay(time.date, today)}, ${formatTime(time.start)} – ${formatTime(time.start + service.duration)} ${zoneAbbr(zone)}` : null;
+  const whenText = time && visit ? `${relativeDay(time.date, today)}, ${formatTime(time.start)} – ${formatTime(time.start + visit.duration)} ${zoneAbbr(zone)}` : null;
   const yourTime = time && visitorZone ? visitorTime(time.date, time.start, zone, visitorZone) : null;
   const staffText = staffId === "any" ? "Any professional" : person?.name;
   const canContinue = step === 0 ? !!service : step === 1 ? !!staffId : step === 2 ? !!slot : true;
@@ -325,14 +469,28 @@ export function BookingPage() {
 
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="space-y-3">
-            <Step n={0} title="Choose a service" current={step} onEdit={() => setStep(0)} summary={service && `${service.name} · ${formatDuration(service.duration)} · ${money(service.price)}`}>
+            <Step n={0} title="Choose a service" current={step} onEdit={() => setStep(0)} summary={visit && `${visit.name} · ${formatDuration(visit.duration)} · ${money(visit.price)}`}>
               <ServiceList services={state.services} value={serviceId} onPick={pickService} />
             </Step>
             <Step n={1} title="Choose a professional" current={step} onEdit={() => setStep(1)} summary={staffText}>
               {serviceId && (
+                <AddOns
+                  state={state}
+                  serviceId={serviceId}
+                  value={addOnIds}
+                  onChange={(ids) => {
+                    setAddOnIds(ids);
+                    setTime(null);
+                    const v = visitFor(state, serviceId, ids);
+                    if (staffId && staffId !== "any" && !v?.staffIds.includes(staffId)) setStaffId(null);
+                  }}
+                />
+              )}
+              {serviceId && (
                 <StaffList
                   state={state}
                   serviceId={serviceId}
+                  addOnIds={addOnIds}
                   now={now}
                   value={staffId}
                   onPick={(id) => {
@@ -353,8 +511,10 @@ export function BookingPage() {
                 <TimePicker
                   state={state}
                   serviceId={serviceId}
+                  addOnIds={addOnIds}
                   staffId={staffId}
                   now={now}
+                  onWaitlist={setWaitDate}
                   value={time}
                   onChange={(t) => {
                     setTime(t);
@@ -378,18 +538,36 @@ export function BookingPage() {
           </div>
 
           <aside className="sticky top-6 hidden lg:block" aria-label="Booking summary">
-            <Summary state={state} service={service} staffText={staffText} whenText={whenText} />
+            <Summary state={state} visit={visit} staffText={staffText} whenText={whenText} />
             <div className="mt-3">{primary}</div>
             <p className="mt-3 text-center text-xs text-muted">Free cancellation up to {state.rules.cancelHours} hours before.</p>
           </aside>
         </div>
       </main>
 
+      {waitDate && serviceId && staffId && (
+        <WaitlistDialog
+          state={state}
+          serviceId={serviceId}
+          addOnIds={addOnIds}
+          staffId={staffId}
+          date={waitDate}
+          client={client}
+          setClient={setClient}
+          onClose={() => setWaitDate(null)}
+          onJoined={(e) => {
+            setWaitDate(null);
+            setWaiting(e);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        />
+      )}
+
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
         <div className="mx-auto flex max-w-6xl items-center gap-3">
           <div className="min-w-0 flex-1">
-            <p className="truncate font-medium">{service ? service.name : "No service yet"}</p>
-            <p className="truncate text-xs text-muted">{whenText ?? (service ? `${formatDuration(service.duration)} · ${money(service.price)}` : "Choose a service to start")}</p>
+            <p className="truncate font-medium">{visit ? visit.name : "No service yet"}</p>
+            <p className="truncate text-xs text-muted">{whenText ?? (visit ? `${formatDuration(visit.duration)} · ${money(visit.price)}` : "Choose a service to start")}</p>
           </div>
           <div className="w-40 shrink-0">{primary}</div>
         </div>
@@ -398,12 +576,12 @@ export function BookingPage() {
   );
 }
 
-function Summary({ state, service, staffText, whenText }: { state: DemoState; service: Service | null; staffText?: string; whenText: string | null }) {
+function Summary({ state, visit, staffText, whenText }: { state: DemoState; visit: Visit | null; staffText?: string; whenText: string | null }) {
   const rows: [string, React.ReactNode][] = [
-    ["Service", service?.name],
+    ["Service", visit?.name],
     ["Professional", staffText],
     ["When", whenText],
-    ["Duration", service && formatDuration(service.duration)],
+    ["Duration", visit && formatDuration(visit.duration)],
   ];
   return (
     <div className="rounded-xl border border-border bg-surface shadow-card">
@@ -421,7 +599,7 @@ function Summary({ state, service, staffText, whenText }: { state: DemoState; se
       </dl>
       <div className="flex items-baseline justify-between border-t border-border px-4 py-3">
         <span className="text-muted">Total</span>
-        <span className="text-[17px] font-semibold tabular-nums">{service ? money(service.price) : "—"}</span>
+        <span className="text-[17px] font-semibold tabular-nums">{visit ? money(visit.price) : "—"}</span>
       </div>
       <p className="border-t border-border px-4 py-2.5 text-xs text-muted">Pay at the salon. No card needed to book.</p>
     </div>

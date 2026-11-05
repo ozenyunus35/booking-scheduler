@@ -26,6 +26,8 @@ function state(): DemoState {
     timeOff: [],
     clients: [{ id: "c001", name: "Maria Real", email: "maria@mail.example", phone: "(718) 555-0101", notes: "", createdAt: "" }],
     bookings: [],
+    waitlist: [],
+    outbox: [],
   };
 }
 
@@ -148,7 +150,7 @@ describe("dates and calendar files", () => {
     const s = state();
     const b = createBooking(s, online({}), MON_10);
     if (!b.ok) throw new Error(b.error);
-    const ics = bookingIcs(b.value, s.services[0], s.staff[0], { ...s.salon, name: "Back\\slash; Salon, Ltd", address: "1 Ünïcode Street ".repeat(6) }, "https://example.com/manage/?b=" + "x".repeat(80), MON_10);
+    const ics = bookingIcs(b.value, s.services[0].name, s.staff[0], { ...s.salon, name: "Back\\slash; Salon, Ltd", address: "1 Ünïcode Street ".repeat(6) }, "https://example.com/manage/?b=" + "x".repeat(80), MON_10);
     const lines = ics.split("\r\n");
     for (const line of lines) expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(75);
     const unfolded = ics.replace(/\r\n /g, "");

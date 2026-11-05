@@ -89,7 +89,7 @@ export function ManagePage() {
               Now: {formatDayLong(booking.date)}, {formatTime(booking.start)} {zoneAbbr(s.salon.timeZone)}. Same service, same professional. Times are in salon time ({zoneCity(s.salon.timeZone)}).
             </p>
             <div className="mt-5 rounded-xl border border-border bg-surface p-4 shadow-card sm:p-5">
-              <TimePicker state={s} serviceId={booking.serviceId} staffId={booking.anyStaff ? "any" : booking.staffId} now={now} value={pick} onChange={setPick} ignoreBookingId={booking.id} />
+              <TimePicker state={s} serviceId={booking.serviceId} addOnIds={booking.addOnIds} staffId={booking.anyStaff ? "any" : booking.staffId} now={now} value={pick} onChange={setPick} ignoreBookingId={booking.id} />
             </div>
             <div className="mt-4 flex gap-2">
               <Button className="h-9 flex-1" onClick={() => setMode("view")}>

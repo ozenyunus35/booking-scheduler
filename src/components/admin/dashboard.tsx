@@ -1,17 +1,18 @@
 "use client";
 
-import { ArrowRight, CalendarDays, Globe, Phone, Scissors, Users } from "lucide-react";
+import { ArrowRight, CalendarDays, Download, Globe, ListTodo, Phone, Scissors, Users } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { bookingWindow } from "@/lib/availability";
-import { formatDay, formatTime, relativeDay } from "@/lib/dates";
+import { bookingTitle, bookingWindow } from "@/lib/availability";
+import { bookingsCsv, download } from "@/lib/csv";
+import { addDays, formatDay, formatTime, relativeDay } from "@/lib/dates";
 import { firstName, money, pct, timeAgo } from "@/lib/format";
 import { overview, type DayPoint } from "@/lib/stats";
 import { useStore } from "@/lib/store";
 import type { DemoState } from "@/lib/types";
 import { useNow } from "@/lib/use-now";
-import { Avatar, Badge, Card, CardHeader, EmptyState, Meter, PageHeader, Sparkline, Spinner, cx } from "../ui";
+import { Avatar, Badge, Button, Card, CardHeader, EmptyState, Meter, PageHeader, Sparkline, Spinner, cx } from "../ui";
 import { BookingDetails, SOURCE_LABEL, STATUS_TONE } from "./booking-dialogs";
 
 function Change({ current, previous, invert, format = "pct" }: { current: number; previous: number; invert?: boolean; format?: "pct" | "pts" }) {
@@ -90,7 +91,6 @@ function Agenda({ s, now, onOpen }: { s: DemoState; now: number; onOpen: (id: st
     <ul className="divide-y divide-border">
       {list.map((b) => {
         const client = s.clients.find((c) => c.id === b.clientId);
-        const service = s.services.find((x) => x.id === b.serviceId);
         const staff = s.staff.find((p) => p.id === b.staffId);
         const nowOn = b.status === "confirmed" && b.start <= nowMinutes && b.end > nowMinutes;
         return (
@@ -100,7 +100,7 @@ function Agenda({ s, now, onOpen }: { s: DemoState; now: number; onOpen: (id: st
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{client?.name}</span>
                 <span className="block truncate text-xs text-muted">
-                  {service?.name} · {firstName(staff?.name ?? "")}
+                  {bookingTitle(s, b)} · {firstName(staff?.name ?? "")}
                 </span>
               </span>
               {nowOn ? <Badge tone="warning">In the chair</Badge> : <Badge tone={STATUS_TONE[b.status]}>{b.status}</Badge>}
@@ -122,14 +122,13 @@ function RecentOnline({ s, now, onOpen }: { s: DemoState; now: number; onOpen: (
     <ul className="divide-y divide-border">
       {list.map((b) => {
         const client = s.clients.find((c) => c.id === b.clientId);
-        const service = s.services.find((x) => x.id === b.serviceId);
         return (
           <li key={b.id}>
             <button onClick={() => onOpen(b.id)} className="flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-surface-2">
               <Avatar name={client?.name ?? ""} size={24} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate">
-                  <span className="font-medium">{client?.name}</span> <span className="text-muted">booked {service?.name}</span>
+                  <span className="font-medium">{client?.name}</span> <span className="text-muted">booked {bookingTitle(s, b)}</span>
                 </span>
                 <span className="block text-xs text-muted">
                   For {relativeDay(b.date, today)}, {formatTime(b.start)}
@@ -152,7 +151,7 @@ export function Dashboard() {
   if (!s || !now || !o) return <Spinner />;
   const openBooking = open ? s.bookings.find((b) => b.id === open) : undefined;
   const totalSources = o.sources.reduce((n, x) => n + x.count, 0) || 1;
-  const SOURCE_ICON = { online: Globe, phone: Phone, "walk-in": Users };
+  const SOURCE_ICON = { online: Globe, phone: Phone, "walk-in": Users, waitlist: ListTodo };
 
   return (
     <div>
@@ -160,9 +159,14 @@ export function Dashboard() {
         title="Dashboard"
         description={`${formatDay(o.today)} · last 7 days compared with the 7 before`}
         actions={
-          <Link href="/admin/" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 font-medium shadow-card hover:bg-surface-2">
-            Open calendar <ArrowRight className="size-3.5" />
-          </Link>
+          <>
+            <Button onClick={() => download(`halden-bookings-${addDays(o.today, -29)}-to-${addDays(o.today, 30)}.csv`, bookingsCsv(s, addDays(o.today, -29), addDays(o.today, 30)))}>
+              <Download /> Export bookings
+            </Button>
+            <Link href="/admin/" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 font-medium shadow-card hover:bg-surface-2">
+              Open calendar <ArrowRight className="size-3.5" />
+            </Link>
+          </>
         }
       />
 
@@ -224,7 +228,7 @@ export function Dashboard() {
             <div className="px-4 py-4">
               <div className="flex h-2 overflow-hidden rounded-full bg-surface-3" aria-hidden>
                 {o.sources.map((x, i) => (
-                  <div key={x.source} className={cx(i === 0 ? "bg-accent" : i === 1 ? "bg-border-strong" : "bg-faint")} style={{ width: `${(x.count / totalSources) * 100}%` }} />
+                  <div key={x.source} className={cx(i === 0 ? "bg-accent" : i === 1 ? "bg-border-strong" : i === 2 ? "bg-faint" : "bg-success")} style={{ width: `${(x.count / totalSources) * 100}%` }} />
                 ))}
               </div>
               <ul className="mt-3 space-y-1.5">
@@ -232,7 +236,7 @@ export function Dashboard() {
                   const Icon = SOURCE_ICON[x.source];
                   return (
                     <li key={x.source} className="flex items-center gap-2">
-                      <span className={cx("size-2 rounded-[2px]", i === 0 ? "bg-accent" : i === 1 ? "bg-border-strong" : "bg-faint")} aria-hidden />
+                      <span className={cx("size-2 rounded-[2px]", i === 0 ? "bg-accent" : i === 1 ? "bg-border-strong" : i === 2 ? "bg-faint" : "bg-success")} aria-hidden />
                       <Icon className="size-3.5 text-faint" aria-hidden />
                       <span className="flex-1">{SOURCE_LABEL[x.source]}</span>
                       <span className="text-muted tabular-nums">{pct(x.count / totalSources)}</span>

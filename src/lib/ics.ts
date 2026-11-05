@@ -1,5 +1,5 @@
 import { zonedToUtc } from "./dates";
-import type { Booking, Salon, Service, Staff } from "./types";
+import type { Booking, Salon, Staff } from "./types";
 
 const stamp = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 /** RFC 5545 text: backslash, semicolon and comma escaped, newlines as \n. */
@@ -26,7 +26,8 @@ function fold(line: string) {
 }
 
 /** An iCalendar file for one appointment, in UTC so every calendar app places it correctly. */
-export function bookingIcs(b: Booking, service: Service, staff: Staff, salon: Salon, manageUrl: string, now = Date.now()) {
+/** `title` is the visit, e.g. "Full color + Cut & finish". */
+export function bookingIcs(b: Booking, title: string, staff: Staff, salon: Salon, manageUrl: string, now = Date.now()) {
   const start = zonedToUtc(b.date, b.start, salon.timeZone);
   const end = zonedToUtc(b.date, b.end, salon.timeZone);
   return [
@@ -40,7 +41,7 @@ export function bookingIcs(b: Booking, service: Service, staff: Staff, salon: Sa
     `DTSTAMP:${stamp(now)}`,
     `DTSTART:${stamp(start)}`,
     `DTEND:${stamp(end)}`,
-    `SUMMARY:${esc(`${service.name} with ${staff.name.split(" ")[0]}`)}`,
+    `SUMMARY:${esc(`${title} with ${staff.name.split(" ")[0]}`)}`,
     `LOCATION:${esc(`${salon.name}, ${salon.address}`)}`,
     `DESCRIPTION:${esc(`Booking ${b.ref}. Change or cancel: ${manageUrl}`)}`,
     "BEGIN:VALARM",

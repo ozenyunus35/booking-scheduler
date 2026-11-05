@@ -1,8 +1,8 @@
 "use client";
 
-import { CalendarX2, ChevronLeft, ChevronRight } from "lucide-react";
+import { BellPlus, CalendarX2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { bookingWindow, getSlots, slotCounts, type Slot } from "@/lib/availability";
+import { bookingWindow, getSlots, offReason, slotCounts, staffFor, type Slot } from "@/lib/availability";
 import { addDays, diffDays, formatDay, formatTime, monthLong, weekdayShort } from "@/lib/dates";
 import type { DemoState, ISODate } from "@/lib/types";
 import { cx } from "../ui";
@@ -27,6 +27,8 @@ export function TimePicker({
   value,
   onChange,
   ignoreBookingId,
+  addOnIds,
+  onWaitlist,
 }: {
   state: DemoState;
   serviceId: string;
@@ -35,16 +37,26 @@ export function TimePicker({
   value: TimeChoice | null;
   onChange: (p: TimeChoice, slot: Slot) => void;
   ignoreBookingId?: string;
+  addOnIds?: string[];
+  /** Offered on a working day that is fully booked. */
+  onWaitlist?: (date: ISODate) => void;
 }) {
   const w = bookingWindow(state, now);
   const total = diffDays(w.lastDate, w.today) + 1;
-  const counts = useMemo(() => slotCounts(state, { serviceId, staffId, now, ignoreBookingId }, w.today, total), [state, serviceId, staffId, now, ignoreBookingId, w.today, total]);
+  const addOnKey = (addOnIds ?? []).join(",");
+  const counts = useMemo(
+    () => slotCounts(state, { serviceId, addOnIds: addOnKey ? addOnKey.split(",") : [], staffId, now, ignoreBookingId }, w.today, total),
+    [state, serviceId, addOnKey, staffId, now, ignoreBookingId, w.today, total],
+  );
+  // Someone who could do this visit works that day, so a full day can take a waitlist entry.
+  const team = staffFor(state, serviceId, addOnIds).filter((p) => staffId === "any" || p.id === staffId);
+  const works = (d: ISODate) => team.some((p) => !offReason(state, p, d));
   const firstOpen = Object.keys(counts).find((d) => counts[d] > 0) ?? w.today;
   const [date, setDate] = useState<ISODate>(value?.date ?? firstOpen);
   const strip = useRef<HTMLDivElement>(null);
 
   // A new service or person can leave the chosen day empty: jump to their first open day.
-  const key = `${serviceId}|${staffId}`;
+  const key = `${serviceId}|${addOnKey}|${staffId}`;
   const [lastKey, setLastKey] = useState(key);
   if (key !== lastKey) {
     setLastKey(key);
@@ -55,7 +67,10 @@ export function TimePicker({
     strip.current?.querySelector<HTMLElement>("[aria-pressed=true]")?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
   }, [date]);
 
-  const slots = useMemo(() => getSlots(state, { serviceId, staffId, date, now, ignoreBookingId }), [state, serviceId, staffId, date, now, ignoreBookingId]);
+  const slots = useMemo(
+    () => getSlots(state, { serviceId, addOnIds: addOnKey ? addOnKey.split(",") : [], staffId, date, now, ignoreBookingId }),
+    [state, serviceId, addOnKey, staffId, date, now, ignoreBookingId],
+  );
   const nextOpen = Object.keys(counts).find((d) => d > date && counts[d] > 0);
   const scroll = (dir: number) => strip.current?.scrollBy({ left: dir * strip.current.clientWidth * 0.8, behavior: "smooth" });
 
@@ -79,18 +94,20 @@ export function TimePicker({
           const d = addDays(w.today, i);
           const n = counts[d] ?? 0;
           const on = d === date;
+          const full = !n && !!onWaitlist && works(d);
           return (
             <button
               key={d}
               type="button"
-              disabled={!n}
+              disabled={!n && !full}
               onClick={() => setDate(d)}
               aria-pressed={on}
-              aria-label={`${formatDay(d)}, ${n ? `${n} times free` : "fully booked or closed"}`}
+              aria-label={`${formatDay(d)}, ${n ? `${n} times free` : full ? "fully booked, waitlist open" : "fully booked or closed"}`}
               className={cx(
                 "flex w-[52px] shrink-0 snap-start flex-col items-center rounded-lg border py-2 transition-colors duration-150",
                 on ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface hover:border-border-strong",
-                !n && "cursor-not-allowed opacity-40",
+                !n && !full && "cursor-not-allowed opacity-40",
+                full && !on && "border-dashed text-muted",
               )}
             >
               <span className={cx("text-[11px]", on ? "text-accent-fg/80" : "text-muted")}>{i === 0 ? "Today" : weekdayShort(d)}</span>
@@ -105,7 +122,15 @@ export function TimePicker({
         {slots.length === 0 ? (
           <div className="flex flex-col items-center rounded-lg border border-dashed border-border px-4 py-8 text-center">
             <CalendarX2 className="mb-2 size-5 text-faint" aria-hidden />
-            <p className="font-medium">No free times on {formatDay(date)}</p>
+            <p className="font-medium">{onWaitlist && works(date) ? `Fully booked on ${formatDay(date)}` : `No free times on ${formatDay(date)}`}</p>
+            {onWaitlist && works(date) && (
+              <>
+                <p className="mt-1 max-w-xs text-muted">Join the waitlist and we&apos;ll text you if a time opens up that day.</p>
+                <button type="button" onClick={() => onWaitlist(date)} className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md border border-accent px-3 font-medium text-accent hover:bg-accent-soft">
+                  <BellPlus className="size-4" aria-hidden /> Join the waitlist
+                </button>
+              </>
+            )}
             {nextOpen ? (
               <button type="button" onClick={() => setDate(nextOpen)} className="mt-2 font-medium text-accent hover:underline">
                 Next opening: {formatDay(nextOpen)}

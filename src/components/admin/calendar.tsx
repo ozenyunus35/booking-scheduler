@@ -1,9 +1,9 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Globe, Plus } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Globe, Keyboard, Plus, Repeat } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { bookingWindow, checkSlot, isLive, offReason, workingMinutes } from "@/lib/availability";
+import { bookingServiceIds, bookingTitle, bookingWindow, checkSlot, isLive, offReason, workingMinutes } from "@/lib/availability";
 import { moveBooking, reasonText } from "@/lib/api";
 import { addDays, formatDayLong, formatHour, formatTime, startOfWeek, weekday, weekdayShort } from "@/lib/dates";
 import { firstName, money, pct } from "@/lib/format";
@@ -11,7 +11,7 @@ import { update, useStore } from "@/lib/store";
 import type { Booking, DemoState, ISODate, Staff } from "@/lib/types";
 import { useNow } from "@/lib/use-now";
 import { useToast } from "../toast";
-import { Avatar, Button, Spinner, cx } from "../ui";
+import { Avatar, Button, Modal, Spinner, cx } from "../ui";
 import { isFresh } from "./arrivals";
 import { BookingDetails, NewBooking, inlineSelectClass, type NewBookingDraft } from "./booking-dialogs";
 
@@ -103,10 +103,14 @@ function Unavailable({ s, staff, date, range, compact }: { s: DemoState; staff: 
 }
 
 function Appointment({ s, b, top, compact, onOpen, onPointerDown, dragging }: { s: DemoState; b: Booking; top: number; compact?: boolean; onOpen: () => void; onPointerDown?: (e: React.PointerEvent) => void; dragging?: boolean }) {
-  const service = s.services.find((x) => x.id === b.serviceId);
+  const ids = bookingServiceIds(b);
+  const lastService = s.services.find((x) => x.id === ids[ids.length - 1]);
+  const title = bookingTitle(s, b);
   const client = s.clients.find((c) => c.id === b.clientId);
+  // Two or more no-shows: worth a confirmation call.
+  const noShows = s.bookings.filter((x) => x.clientId === b.clientId && x.status === "no-show").length;
   const h = (b.end - b.start) * PX;
-  const buffer = b.status === "cancelled" ? 0 : (service?.buffer ?? 0) * PX;
+  const buffer = b.status === "cancelled" ? 0 : (lastService?.buffer ?? 0) * PX;
   return (
     <>
       <button
@@ -114,7 +118,7 @@ function Appointment({ s, b, top, compact, onOpen, onPointerDown, dragging }: { 
         data-booking={b.id}
         onClick={onOpen}
         onPointerDown={onPointerDown}
-        title={`${formatTime(b.start)}–${formatTime(b.end)} · ${client?.name} · ${service?.name}`}
+        title={`${formatTime(b.start)}–${formatTime(b.end)} · ${client?.name} · ${title}`}
         className={cx(
           "absolute z-[1] overflow-hidden rounded-md border-l-2 text-left text-xs leading-4 transition-[opacity,box-shadow] duration-150 hover:z-[2] hover:shadow-pop",
           compact ? "inset-x-0.5" : "inset-x-1 px-2 py-1",
@@ -128,15 +132,17 @@ function Appointment({ s, b, top, compact, onOpen, onPointerDown, dragging }: { 
       >
         {compact ? (
           <span className="sr-only">
-            {client?.name}, {service?.name}
+            {client?.name}, {title}
           </span>
         ) : (
           <>
             <span className="flex items-center gap-1 truncate font-medium text-text">
               {b.source === "online" && <Globe className="size-3 shrink-0 text-accent" aria-label="Booked online" />}
+              {b.seriesId && <Repeat className="size-3 shrink-0 text-muted" aria-label="Repeating appointment" />}
+              {noShows >= 2 && b.status === "confirmed" && <AlertTriangle className="size-3 shrink-0 text-danger" aria-label={`${noShows} no-shows before`} />}
               <span className="truncate">{client?.name}</span>
             </span>
-            {h >= 34 && <span className="block truncate">{service?.name}</span>}
+            {h >= 34 && <span className="block truncate">{title}</span>}
             {h >= 50 && (
               <span className="block truncate text-faint tabular-nums">
                 {formatTime(b.start)} – {formatTime(b.end)}
@@ -324,6 +330,7 @@ export function Calendar() {
   const [showCancelled, setShowCancelled] = useState(false);
   const [open, setOpen] = useState<string | null>(params.focus);
   const [draft, setDraft] = useState<NewBookingDraft | null>(null);
+  const [help, setHelp] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const ready = !!s && !!now;
 
@@ -343,6 +350,30 @@ export function Calendar() {
     // Only when the day or view changes, not on every data update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, date, view]);
+
+  // Keyboard: T today, ← → previous and next, D and W for the view, N for a new booking, ? for help.
+  // Ignored while typing or with a dialog open.
+  useEffect(() => {
+    if (!ready) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest("input, textarea, select, [contenteditable=true]") || document.querySelector("dialog[open]")) return;
+      const k = e.key.toLowerCase();
+      const by = view === "day" ? 1 : 7;
+      if (k === "t") setPicked(null);
+      else if (e.key === "ArrowLeft") setPicked(addDays(date, -by));
+      else if (e.key === "ArrowRight") setPicked(addDays(date, by));
+      else if (k === "d") setView("day");
+      else if (k === "w") setView("week");
+      else if (k === "n") setDraft({ date: date < today ? today : date });
+      else if (e.key === "?") setHelp(true);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [ready, date, today, view]);
 
   if (!s || !now) return <Spinner label="Loading calendar" />;
 
@@ -457,8 +488,30 @@ export function Calendar() {
       </div>
       <p className="mt-2 text-xs text-muted">
         <span className="hidden sm:inline">Click an empty slot to add a booking, drag an appointment to move it. </span>
-        <Globe className="inline size-3 text-accent" aria-hidden /> booked online · hatched time is a break, time off or clean-up buffer.
+        <Globe className="inline size-3 text-accent" aria-hidden /> booked online · <Repeat className="inline size-3" aria-hidden /> repeating · <AlertTriangle className="inline size-3 text-danger" aria-hidden /> 2+ no-shows · hatched time is a break, time off or clean-up buffer.
+        <button onClick={() => setHelp(true)} className="ml-2 hidden items-center gap-1 align-middle font-medium text-accent hover:underline sm:inline-flex">
+          <Keyboard className="size-3.5" aria-hidden /> Shortcuts
+        </button>
       </p>
+
+      <Modal open={help} onClose={() => setHelp(false)} title="Keyboard shortcuts">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+          {[
+            ["T", "Go to today"],
+            ["← →", view === "day" ? "Previous or next day" : "Previous or next week"],
+            ["D / W", "Day or week view"],
+            ["N", "New booking"],
+            ["?", "Show this list"],
+          ].map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt>
+                <kbd className="rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-xs">{k}</kbd>
+              </dt>
+              <dd className="text-muted">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      </Modal>
 
       {openBooking && <BookingDetails key={openBooking.id} state={s} booking={openBooking} now={now} onClose={() => setOpen(null)} />}
       {draft && <NewBooking state={s} now={now} draft={draft} onClose={() => setDraft(null)} />}

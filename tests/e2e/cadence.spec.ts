@@ -45,7 +45,7 @@ test("booking page opens on services with the soonest openings", async ({ page }
   await page.goto("./");
   await expect(page.getByRole("heading", { level: 1, name: "Book an appointment" })).toBeVisible();
   await expect(page.getByText("Soonest openings")).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Men's cut .*Today, 2:00 PM/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Men's cut .*Today, 12:45 PM/ })).toBeVisible();
   await expect(step(page, "Choose a service").getByRole("button", { name: /^Balayage/ })).toBeVisible();
   await step(page, "Choose a service").getByRole("button", { name: "Barbering" }).click();
   await expect(step(page, "Choose a service").getByRole("button", { name: /^Balayage/ })).toHaveCount(0);
@@ -279,4 +279,98 @@ test("theme toggle and demo reset", async ({ page }) => {
   await page.getByRole("dialog", { name: "Reset demo data?" }).getByRole("button", { name: "Reset" }).click();
   await expect(toast(page)).toContainText("Demo data was reset.");
   await noHorizontalScroll(page);
+});
+
+test("a visit can take a second service and a full day takes a waitlist entry", async ({ page }) => {
+  await page.goto("./");
+  await step(page, "Choose a service").getByRole("button", { name: /^All-over color/ }).click();
+  const pros = step(page, "Choose a professional");
+  await pros.getByRole("group", { name: "Add a service to this visit" }).getByRole("button", { name: /^Cut & finish/ }).click();
+  // Another color service is not offered as an add-on to a color.
+  await expect(pros.getByRole("group", { name: "Add a service to this visit" }).getByRole("button", { name: /^Root touch-up/ })).toHaveCount(0);
+  await expect(step(page, "Choose a service").getByText("All-over color + Cut & finish · 3 h · $245")).toBeVisible();
+  // Only people who do both are left.
+  await expect(pros.getByRole("button", { name: /^Inès Calder/ })).toHaveCount(0);
+  await pros.getByRole("button", { name: /^Any professional/ }).click();
+
+  const time = step(page, "Pick a time");
+  await time.getByRole("button", { name: /waitlist open/ }).first().click();
+  await time.getByRole("button", { name: "Join the waitlist" }).click();
+  const dialog = page.getByRole("dialog", { name: /^Waitlist for / });
+  await dialog.getByText("Afternoon (12–5)").click();
+  await dialog.getByLabel("Full name").fill("Wren Abbott");
+  await dialog.getByLabel("Email").fill("wren@mail.example");
+  await dialog.getByLabel("Mobile phone").fill("(718) 555-0188");
+  await dialog.getByRole("button", { name: "Join the waitlist" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "You're on the waitlist" })).toBeVisible();
+  await expect(page.getByText(/All-over color \+ Cut & finish on .*, afternoon/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Pick another day" }).click();
+  await time.getByRole("button", { name: /times free/ }).first().click();
+  await time.getByRole("button", { name: slotButton }).first().click();
+  await fillDetails(page);
+  await page.getByRole("button", { name: "Confirm booking" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "You're booked, Dana" })).toBeVisible();
+  await expect(page.getByText("All-over color + Cut & finish", { exact: true })).toBeVisible();
+  await expect(page.getByText("$245")).toBeVisible();
+
+  await page.goto("./admin/waitlist/");
+  await expect(page.getByRole("heading", { level: 1, name: "Waitlist" })).toBeVisible();
+  await expect(page.getByText("Wren Abbott")).toBeVisible();
+  await noHorizontalScroll(page);
+  await page.goto("./admin/messages/");
+  await expect(page.getByText(/You're on the waitlist: All-over color \+ Cut & finish/)).toBeVisible();
+  await expect(page.getByText(/Booked: All-over color \+ Cut & finish/)).toBeVisible();
+  await page.getByRole("tab", { name: /^Scheduled reminders/ }).click();
+  await expect(page.getByText(/reminder of your/).first()).toBeVisible();
+  await noHorizontalScroll(page);
+});
+
+test("the salon books a waitlisted client and a repeating series", async ({ page }) => {
+  await page.goto("./admin/waitlist/");
+  const row = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: "Book" }) }).first();
+  await row.getByRole("button", { name: "Book" }).click();
+  await expect(toast(page)).toContainText("A confirmation is in Messages.");
+
+  await page.goto("./admin/");
+  await page.getByRole("button", { name: "New booking" }).click();
+  const dialog = page.getByRole("dialog", { name: "New booking" });
+  await dialog.getByLabel("Client").fill("Rook Tester");
+  await dialog.getByLabel("Email").fill("rook@mail.example");
+  await dialog.getByLabel("Phone").fill("(718) 555-0190");
+  await dialog.getByLabel("Date").fill("2026-11-04");
+  await dialog.getByLabel("Start time").selectOption({ index: 1 });
+  await dialog.getByLabel("Repeat").selectOption("4");
+  await dialog.getByLabel("Appointments in all").selectOption("4");
+  await expect(dialog.getByRole("list", { name: "Series preview" }).getByRole("listitem")).toHaveCount(4);
+  await dialog.getByRole("button", { name: "Create booking" }).click();
+  await expect(toast(page)).toContainText(/Booked \d appointments for Rook, every 4 weeks/);
+});
+
+test("calendar keyboard shortcuts and CSV exports", async ({ page }) => {
+  test.skip(isMobile(page), "Keyboard shortcuts are for desktop.");
+  await page.goto("./admin/");
+  await expect(page.getByRole("heading", { level: 1, name: "Thursday, October 29" })).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("heading", { level: 1, name: "Friday, October 30" })).toBeVisible();
+  await page.keyboard.press("t");
+  await expect(page.getByRole("heading", { level: 1, name: "Thursday, October 29" })).toBeVisible();
+  await page.keyboard.press("w");
+  await expect(page.getByRole("button", { name: "week", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("?");
+  await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.goto("./admin/clients/");
+  const clients = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export CSV" }).click();
+  const file = await clients;
+  expect(file.suggestedFilename()).toBe("halden-clients-2026-10-29.csv");
+  const text = await (await file.createReadStream()).toArray().then((c) => Buffer.concat(c).toString("utf8"));
+  expect(text.split("\r\n")[0]).toBe("﻿Name,Email,Phone,Visits,No-shows,Last visit,Client since,Notes");
+
+  await page.goto("./admin/dashboard/");
+  const bookings = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export bookings" }).click();
+  expect((await bookings).suggestedFilename()).toBe("halden-bookings-2026-09-30-to-2026-11-28.csv");
 });

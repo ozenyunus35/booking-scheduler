@@ -2,6 +2,7 @@
 
 import { ArrowUpRight, CalendarPlus, CheckCircle2, Copy, Settings2 } from "lucide-react";
 import Link from "next/link";
+import { bookingTitle } from "@/lib/availability";
 import { formatDayLong, formatDuration, formatTime, zoneAbbr } from "@/lib/dates";
 import { firstName, money } from "@/lib/format";
 import { bookingIcs } from "@/lib/ics";
@@ -14,9 +15,8 @@ const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 export const manageUrl = (b: Booking) => `${window.location.origin}${BASE}/manage/?b=${b.token}`;
 
 export function downloadIcs(state: DemoState, b: Booking) {
-  const service = state.services.find((s) => s.id === b.serviceId)!;
   const staff = state.staff.find((p) => p.id === b.staffId)!;
-  const blob = new Blob([bookingIcs(b, service, staff, state.salon, manageUrl(b))], { type: "text/calendar" });
+  const blob = new Blob([bookingIcs(b, bookingTitle(state, b), staff, state.salon, manageUrl(b))], { type: "text/calendar" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `halden-${b.ref.toLowerCase()}.ics`;
@@ -26,14 +26,13 @@ export function downloadIcs(state: DemoState, b: Booking) {
 
 /** The appointment as a card: used on the confirmation and the manage page. */
 export function BookingCard({ state, booking, className }: { state: DemoState; booking: Booking; className?: string }) {
-  const service = state.services.find((s) => s.id === booking.serviceId);
   const staff = state.staff.find((p) => p.id === booking.staffId);
   return (
     <div className={cx("rounded-xl border border-border bg-surface shadow-card", className)}>
       <div className="flex items-center gap-3 border-b border-border px-4 py-3.5">
         {staff && <Avatar name={staff.name} size={36} />}
         <div className="min-w-0 flex-1">
-          <p className="font-semibold">{service?.name}</p>
+          <p className="font-semibold">{bookingTitle(state, booking)}</p>
           <p className="text-muted">
             with {staff?.name}
             {booking.anyStaff && <span className="text-faint"> · assigned for you</span>}
