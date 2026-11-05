@@ -3,7 +3,7 @@
 import { ArrowRight, Check, ChevronLeft, Sparkles, Users } from "lucide-react";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { getSlots, nextAvailable, staffFor } from "@/lib/availability";
-import { createBooking, validateClient, type ClientInput } from "@/lib/api";
+import { createBooking, LIMITS, validateClient, type ClientInput } from "@/lib/api";
 import { formatDuration, formatTime, relativeDay, visitorTime, zoneAbbr, zoneCity } from "@/lib/dates";
 import { money } from "@/lib/format";
 import { bookingWindow } from "@/lib/availability";
@@ -198,18 +198,18 @@ function Details({ id, onSubmit, value, onChange, errors, notes, setNotes }: { i
     <form id={id} onSubmit={onSubmit} noValidate className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div className="sm:col-span-2">
         <Field label="Full name" error={errors.name}>
-          {(fid, d) => <input id={fid} autoComplete="name" value={value.name} onChange={set("name")} aria-invalid={!!errors.name} aria-describedby={d} className={cx(inputClass, "h-9")} />}
+          {(fid, d) => <input id={fid} autoComplete="name" value={value.name} maxLength={LIMITS.name} onChange={set("name")} aria-invalid={!!errors.name} aria-describedby={d} className={cx(inputClass, "h-9")} />}
         </Field>
       </div>
       <Field label="Email" error={errors.email} hint="For your confirmation and booking link.">
-        {(fid, d) => <input id={fid} type="email" autoComplete="email" value={value.email} onChange={set("email")} aria-invalid={!!errors.email} aria-describedby={d} className={cx(inputClass, "h-9")} />}
+        {(fid, d) => <input id={fid} type="email" autoComplete="email" value={value.email} maxLength={LIMITS.email} onChange={set("email")} aria-invalid={!!errors.email} aria-describedby={d} className={cx(inputClass, "h-9")} />}
       </Field>
       <Field label="Mobile phone" error={errors.phone} hint="We text a reminder the day before.">
-        {(fid, d) => <input id={fid} type="tel" autoComplete="tel" value={value.phone} onChange={set("phone")} aria-invalid={!!errors.phone} aria-describedby={d} className={cx(inputClass, "h-9")} />}
+        {(fid, d) => <input id={fid} type="tel" autoComplete="tel" value={value.phone} maxLength={LIMITS.phone} onChange={set("phone")} aria-invalid={!!errors.phone} aria-describedby={d} className={cx(inputClass, "h-9")} />}
       </Field>
       <div className="sm:col-span-2">
         <Field label="Anything we should know? (optional)">
-          {(fid) => <textarea id={fid} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={cx(inputClass, "h-auto py-2")} placeholder="Allergies, reference photos, accessibility needs" />}
+          {(fid) => <textarea id={fid} rows={2} maxLength={LIMITS.notes} value={notes} onChange={(e) => setNotes(e.target.value)} className={cx(inputClass, "h-auto py-2")} placeholder="Allergies, reference photos, accessibility needs" />}
         </Field>
       </div>
       <p className="text-xs text-muted sm:col-span-2">Demo: nothing is sent. Use any name and an address like you@mail.example.</p>
@@ -284,6 +284,7 @@ export function BookingPage() {
         <Confirmation
           state={state}
           booking={state.bookings.find((b) => b.id === done.id) ?? done}
+          name={client.name}
           onAgain={() => {
             setDone(null);
             setStep(0);

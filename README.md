@@ -68,9 +68,14 @@ A start time is bookable for a person when:
 1. they offer the service and work that day (no whole-day time off),
 2. the appointment fits inside their hours and misses their breaks and part-day time off,
 3. the appointment plus its clean-up buffer misses every live booking plus that booking's buffer,
-4. for online booking, it is at least the minimum notice away and inside the booking window.
+4. for online booking, it is at least the minimum notice away, measured in real time (a one-day notice also
+   closes tomorrow morning), and inside the booking window.
 
-Start times sit on the slot-step grid from the start of each person's day. "Any professional" merges everyone's
+Start times sit on the slot-step grid from the start of each person's day, and an online booking has to use one;
+the salon's own calendar can book any minute. A rescheduled booking keeps its own length, even if the service got
+shorter or longer since. Every booking change also checks its input (a real date, a whole minute, a service still
+offered, contact details the form would accept), and an online booking never overwrites the name or phone of a
+client already on file: details that differ are added to the booking's notes for the salon to check. "Any professional" merges everyone's
 free times and records who is free at each one; when the client confirms, the time is checked again and given to
 the free person with the fewest booked minutes that day. `checkSlot` returns the reason a time doesn't work, which
 the calendar shows while dragging. Salon wall-clock times are converted to real instants (for "today", the notice
@@ -110,7 +115,8 @@ BASE_URL=https://ozenyunus35.github.io/booking-scheduler/ npm run test:e2e   # a
 - **Unit (Vitest):** working hours, breaks, whole-day and part-day time off, buffers on both sides, cancelled
   bookings, rescheduling, minimum notice, booking window, salon time zone versus UTC, DST conversion, "any
   professional" merging and assignment, reasons for unavailable times, booking, double-booking protection, client
-  matching, cancellation window, `.ics` output, seed integrity (no overlaps, synthetic contacts) and dashboard maths.
+  matching, cancellation window, `.ics` output (escaping and line folding), seed integrity (no overlaps, no client
+  in two chairs at once, synthetic contacts), input checks and dashboard maths.
 - **End-to-end (Playwright, clock pinned to a Thursday morning):** booking, rescheduling and cancelling as a client,
   soonest openings, notice period, a time taken in another tab, lookup by reference, the salon calendar, a live
   booking arriving from another tab, phone bookings, drag to move, dashboard, clients, services, team and

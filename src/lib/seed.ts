@@ -92,6 +92,9 @@ function rng(seed: number) {
 }
 
 const FIRST = ["Amelia", "Olivia", "Isla", "Freya", "Ava", "Poppy", "Grace", "Sophie", "Lily", "Ella", "Chloe", "Hannah", "Zara", "Leah", "Nadia", "Priya", "Mei", "Elena", "Clara", "Rosa", "Oliver", "Harry", "Noah", "Jack", "Leo", "Arthur", "Oscar", "Ethan", "Samir", "Tom", "Felix", "Kai", "Daniel", "Marcus", "Hugo", "Luca"];
+/** The second half of FIRST, for the barbering services. */
+const MALE_FIRST = new Set(FIRST.slice(FIRST.indexOf("Oliver")));
+const BARBER = new Set(["mens-cut", "skin-fade", "beard", "cut-beard"]);
 const LAST = ["Ashdown", "Bramley", "Carrow", "Denholm", "Ellery", "Fairley", "Garside", "Hollis", "Ingram", "Jessop", "Kendal", "Lowther", "Marlow", "Norbury", "Oakley", "Pemberton", "Quarry", "Radley", "Selwood", "Thorne", "Upton", "Vance", "Whitlock", "Yardley", "Ainsworth", "Blythe", "Crane", "Dunmore", "Everly", "Frome"];
 
 /** Weighted service mix per staff member: what they're mostly booked for. */
@@ -165,8 +168,21 @@ export function createSeed(now = Date.now()): DemoState {
 
   const byId = new Map(services.map((s) => [s.id, s]));
   let seq = 0;
-  // Regulars come back: a third of the clients get most of the visits.
-  const client = () => clients[r() < 0.6 ? Math.floor(r() * 32) : Math.floor(r() * clients.length)].id;
+  // Barbering goes to men and a women's cut to women; the rest to anyone.
+  const men = clients.filter((c) => MALE_FIRST.has(c.name.split(" ")[0]));
+  const women = clients.filter((c) => !MALE_FIRST.has(c.name.split(" ")[0]));
+  const poolFor = (serviceId: string) => (BARBER.has(serviceId) ? men : serviceId === "womens-cut" ? women : clients);
+  // Regulars come back: a third of each pool gets most of the visits. A client is never in two
+  // chairs at once, so someone already booked at that time is skipped.
+  const busy = (id: string, date: string, start: number, end: number) => state.bookings.some((b) => b.clientId === id && b.date === date && b.start < end && start < b.end);
+  const client = (serviceId: string, date: string, start: number, end: number) => {
+    const pool = poolFor(serviceId);
+    const regulars = Math.ceil(pool.length / 3);
+    for (let i = 0; ; i++) {
+      const c = pool[r() < 0.6 ? Math.floor(r() * regulars) : Math.floor(r() * pool.length)];
+      if (!busy(c.id, date, start, end) || i > 20) return c.id;
+    }
+  };
 
   for (let d = -35; d <= 21; d++) {
     const date = addDays(today, d);
@@ -205,7 +221,7 @@ export function createSeed(now = Date.now()): DemoState {
           token: Math.floor(r() * 2 ** 48).toString(36),
           serviceId: service.id,
           staffId: person.id,
-          clientId: client(),
+          clientId: client(service.id, date, t, end),
           date,
           start: t,
           end,

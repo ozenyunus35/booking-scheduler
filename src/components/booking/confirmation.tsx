@@ -67,7 +67,8 @@ export function BookingCard({ state, booking, className }: { state: DemoState; b
   );
 }
 
-export function Confirmation({ state, booking, onAgain }: { state: DemoState; booking: Booking; onAgain: () => void }) {
+/** `name` is the name typed on the booking form; the client on file may be someone else's record. */
+export function Confirmation({ state, booking, name, onAgain }: { state: DemoState; booking: Booking; name: string; onAgain: () => void }) {
   const { toast } = useToast();
   const client = state.clients.find((c) => c.id === booking.clientId);
   const copy = async () => {
@@ -82,7 +83,7 @@ export function Confirmation({ state, booking, onAgain }: { state: DemoState; bo
     <main id="main" className="mx-auto max-w-xl animate-rise px-4 py-10 sm:py-14">
       <div className="mb-6 text-center">
         <CheckCircle2 className="mx-auto mb-3 size-9 text-success" strokeWidth={1.75} aria-hidden />
-        <h1 className="text-xl font-semibold tracking-[-0.015em]">You&apos;re booked{client ? `, ${firstName(client.name)}` : ""}</h1>
+        <h1 className="text-xl font-semibold tracking-[-0.015em]">You&apos;re booked{name.trim() ? `, ${firstName(name.trim())}` : ""}</h1>
         <p className="mt-1 text-muted">A confirmation would go to {client?.email ?? "your email"}. In this demo nothing is sent.</p>
       </div>
 

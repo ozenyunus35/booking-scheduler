@@ -3,7 +3,7 @@
 import { CalendarOff, Clock, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { bookingWindow, workingMinutes } from "@/lib/availability";
-import { addDays, formatDate, formatTime, parseTime, toTimeInput } from "@/lib/dates";
+import { addDays, formatDate, formatTime, parseTime, toTimeInput, weekday } from "@/lib/dates";
 import { firstName, pct } from "@/lib/format";
 import { utilisation } from "@/lib/stats";
 import { update, useStore } from "@/lib/store";
@@ -22,6 +22,22 @@ function HoursForm({ staff, onClose }: { staff: Staff; onClose: () => void }) {
   );
   const [error, setError] = useState<string | null>(null);
   const set = (i: number, patch: Partial<(typeof rows)[number]>) => setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const state = useStore();
+  const now = useNow();
+  // Upcoming appointments the new hours would leave outside working time (or on a break).
+  const outside = (() => {
+    if (!state) return 0;
+    const { today } = bookingWindow(state, now);
+    return state.bookings.filter((b) => {
+      if (b.staffId !== staff.id || b.status !== "confirmed" || b.date < today) return false;
+      const r = rows[weekday(b.date)];
+      if (!r.on) return true;
+      const start = parseTime(r.start);
+      const end = parseTime(r.end);
+      const onBreak = r.hasBreak && b.start < parseTime(r.bEnd) && parseTime(r.bStart) < b.end;
+      return b.start < start || b.end > end || onBreak;
+    }).length;
+  })();
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,6 +127,11 @@ function HoursForm({ staff, onClose }: { staff: Staff; onClose: () => void }) {
         {error && (
           <p className="mt-3 text-danger" role="alert">
             {error}
+          </p>
+        )}
+        {outside > 0 && (
+          <p className="mt-3 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-warning">
+            {outside} upcoming appointment{outside === 1 ? "" : "s"} fall outside these hours. They stay booked: move them from the calendar.
           </p>
         )}
         <p className="mt-3 text-xs text-muted">Existing appointments stay where they are. Only new online times follow the new hours.</p>

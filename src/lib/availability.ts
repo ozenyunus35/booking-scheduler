@@ -1,4 +1,4 @@
-import { addDays, diffDays, weekday, zonedNow } from "./dates";
+import { addDays, diffDays, weekday, zonedNow, zonedToUtc } from "./dates";
 import type { Booking, DemoState, ISODate, Interval, Service, Staff } from "./types";
 
 /**
@@ -6,13 +6,16 @@ import type { Booking, DemoState, ISODate, Interval, Service, Staff } from "./ty
  * - they offer the service and work that day (no full-day time off),
  * - the appointment fits inside their hours and misses their breaks and part-day time off,
  * - the appointment plus its clean-up buffer misses every live booking plus that booking's buffer,
- * - and, for online booking, it is at least `minNotice` minutes away and within `maxDaysAhead` days.
- * Start times sit on a `slotStep` grid counted from the start of the staff member's day.
+ * - and, for online booking, it is at least `minNotice` minutes away (measured in real time, so a
+ *   one-day notice also holds tomorrow morning) and within `maxDaysAhead` days.
+ * Start times sit on a `slotStep` grid counted from the start of the staff member's day; online
+ * bookings must use one of them.
+ * A booking being rescheduled keeps its own length, even if the service's duration has changed since.
  */
 
 export type Schedule = Pick<DemoState, "salon" | "rules" | "services" | "staff" | "timeOff" | "bookings">;
 
-export type Reason = "unknown" | "not-offered" | "day-off" | "time-off" | "outside-hours" | "break" | "overlap" | "past" | "too-soon" | "too-far";
+export type Reason = "unknown" | "not-offered" | "day-off" | "time-off" | "outside-hours" | "break" | "overlap" | "past" | "too-soon" | "too-far" | "off-grid";
 
 export const REASON_TEXT: Record<Reason, string> = {
   unknown: "That service or staff member no longer exists.",
@@ -25,6 +28,7 @@ export const REASON_TEXT: Record<Reason, string> = {
   past: "That time has already passed.",
   "too-soon": "That time is too soon to book online.",
   "too-far": "That date is too far ahead to book online.",
+  "off-grid": "That isn't one of the bookable start times.",
 };
 
 export interface SlotQuery {
@@ -53,7 +57,7 @@ export const isLive = (b: Booking) => b.status === "confirmed" || b.status === "
 /** The salon's today, the current minute and the last date clients can book online. */
 export function bookingWindow(s: Pick<Schedule, "salon" | "rules">, now: number) {
   const { date: today, minutes } = zonedNow(s.salon.timeZone, now);
-  return { today, nowMinutes: minutes, earliest: minutes + s.rules.minNotice, lastDate: addDays(today, s.rules.maxDaysAhead) };
+  return { today, nowMinutes: minutes, lastDate: addDays(today, s.rules.maxDaysAhead) };
 }
 
 interface Day {
@@ -81,9 +85,15 @@ function staffDay(s: Schedule, staff: Staff, date: ISODate, ignoreBookingId?: st
   return { hours, away, booked };
 }
 
+/** Minutes the appointment takes: a rescheduled booking keeps its own length. */
+function lengthFor(s: Schedule, q: Pick<SlotQuery, "ignoreBookingId">, service: Service): number {
+  const moving = q.ignoreBookingId ? s.bookings.find((b) => b.id === q.ignoreBookingId) : undefined;
+  return moving ? moving.end - moving.start : service.duration;
+}
+
 /** Why a start time doesn't work for this person, or null when it does. Ignores the online rules. */
-function fit(day: Day, service: Service, start: number): Reason | null {
-  const visit = { start, end: start + service.duration };
+function fit(day: Day, service: Service, start: number, length: number): Reason | null {
+  const visit = { start, end: start + length };
   if (visit.start < day.hours.start || visit.end > day.hours.end) return "outside-hours";
   const clash = day.away.find((a) => overlaps(visit, a.at));
   if (clash) return clash.reason;
@@ -97,10 +107,11 @@ function timing(s: Schedule, q: SlotQuery, start: number): Reason | null {
   const w = bookingWindow(s, q.now);
   if (q.date < w.today) return "past";
   if (q.date > w.lastDate) return "too-far";
-  if (q.date === w.today) {
-    if (start < w.nowMinutes) return "past";
-    if (start < w.earliest) return "too-soon";
-  }
+  // The notice is real time, so it can reach into the next days; later days need no check.
+  if (diffDays(q.date, w.today) > Math.ceil(s.rules.minNotice / 1440)) return null;
+  const at = zonedToUtc(q.date, start, s.salon.timeZone);
+  if (at < q.now) return "past";
+  if (at < q.now + s.rules.minNotice * 60_000) return "too-soon";
   return null;
 }
 
@@ -113,7 +124,12 @@ export function checkSlot(s: Schedule, q: SlotQuery & { start: number }): Reason
   const t = timing(s, q, q.start);
   if (t) return t;
   const day = staffDay(s, staff, q.date, q.ignoreBookingId);
-  return typeof day === "string" ? day : fit(day, service, q.start);
+  if (typeof day === "string") return day;
+  const reason = fit(day, service, q.start, lengthFor(s, q, service));
+  if (reason) return reason;
+  // Online, only the start times the booking page offers can be booked.
+  if (q.enforceRules !== false && (q.start - day.hours.start) % s.rules.slotStep !== 0) return "off-grid";
+  return null;
 }
 
 /** Staff who can do a service, in display order. */
@@ -125,9 +141,10 @@ export function staffFor(s: Schedule, serviceId: string): Staff[] {
 function startsFor(s: Schedule, q: SlotQuery, service: Service, staff: Staff): number[] {
   const day = staffDay(s, staff, q.date, q.ignoreBookingId);
   if (typeof day === "string") return [];
+  const length = lengthFor(s, q, service);
   const out: number[] = [];
-  for (let t = day.hours.start; t + service.duration <= day.hours.end; t += s.rules.slotStep) {
-    if (!timing(s, q, t) && !fit(day, service, t)) out.push(t);
+  for (let t = day.hours.start; t + length <= day.hours.end; t += s.rules.slotStep) {
+    if (!timing(s, q, t) && !fit(day, service, t, length)) out.push(t);
   }
   return out;
 }

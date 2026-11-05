@@ -45,7 +45,7 @@ test("booking page opens on services with the soonest openings", async ({ page }
   await page.goto("./");
   await expect(page.getByRole("heading", { level: 1, name: "Book an appointment" })).toBeVisible();
   await expect(page.getByText("Soonest openings")).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Men's cut .*Today, 2:30 PM/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Men's cut .*Today, 2:00 PM/ })).toBeVisible();
   await expect(step(page, "Choose a service").getByRole("button", { name: /^Balayage/ })).toBeVisible();
   await step(page, "Choose a service").getByRole("button", { name: "Barbering" }).click();
   await expect(step(page, "Choose a service").getByRole("button", { name: /^Balayage/ })).toHaveCount(0);
@@ -136,6 +136,8 @@ test("times inside the notice period or taken in another tab can't be booked", a
 
 test("a booking can be found by reference and email", async ({ page }) => {
   await page.goto("./manage/");
+  // The page seeds the demo on its first render; wait for it before reading it.
+  await page.waitForFunction(() => localStorage.getItem("cadence:state") !== null);
   const { ref, email } = await page.evaluate(() => {
     const s = JSON.parse(localStorage.getItem("cadence:state")!);
     const b = s.bookings.find((x: { status: string; date: string }) => x.status === "confirmed" && x.date > "2026-11-01");
@@ -219,6 +221,7 @@ test("dragging an appointment shows where it lands", async ({ page }) => {
   await page.goto("./admin/");
   await page.getByRole("button", { name: "Next day" }).click();
   const block = page.locator("[data-booking]").first();
+  await block.scrollIntoViewIfNeeded();
   const box = (await block.boundingBox())!;
   await page.mouse.move(box.x + 20, box.y + 8);
   await page.mouse.down();

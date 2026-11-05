@@ -37,13 +37,20 @@ function offset(ms: number, timeZone: string) {
   return Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s) - Math.floor(ms / 1000) * 1000;
 }
 
-/** The instant of a salon wall-clock time. Times skipped by a DST jump resolve to the later offset. */
+/**
+ * The instant of a salon wall-clock time. A time that happens twice when the clocks go back
+ * is the first one; a time skipped when they go forward is read with the offset from before
+ * the jump, so 2:30 AM becomes 3:30 AM, as most calendar apps do.
+ */
 export function zonedToUtc(date: ISODate, minutes: number, timeZone: string): number {
   const wall = toUtc(date) + minutes * 60_000;
-  let ms = wall - offset(wall, timeZone);
-  const second = offset(ms, timeZone);
-  if (wall - second !== ms) ms = wall - second;
-  return ms;
+  const before = wall - offset(wall - 86_400_000, timeZone);
+  const after = wall - offset(wall + 86_400_000, timeZone);
+  const shows = (ms: number) => ms + offset(ms, timeZone) === wall;
+  if (shows(before) && shows(after)) return Math.min(before, after);
+  if (shows(before)) return before;
+  if (shows(after)) return after;
+  return before;
 }
 
 /** "9:30 AM" */

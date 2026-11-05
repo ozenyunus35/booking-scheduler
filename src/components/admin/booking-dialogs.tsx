@@ -3,7 +3,7 @@
 import { Ban, CalendarClock, Check, Globe, Mail, Phone, UserX } from "lucide-react";
 import { useState } from "react";
 import { bookingWindow, getSlots, staffFor } from "@/lib/availability";
-import { cancelBooking, createBooking, moveBooking, setStatus, validateClient } from "@/lib/api";
+import { cancelBooking, createBooking, LIMITS, moveBooking, setStatus, validateClient } from "@/lib/api";
 import { formatDayLong, formatDuration, formatTime } from "@/lib/dates";
 import { firstName, money } from "@/lib/format";
 import { update } from "@/lib/store";
@@ -278,7 +278,7 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
           <Field label="Client" error={errors.name} hint={name.trim() ? (match ? `Existing client · ${match.phone}` : "New client: add their contact details below.") : "Start typing to find a client."}>
             {(id, d) => (
               <>
-                <input id={id} list="client-names" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} aria-describedby={d} autoComplete="off" className={inputClass} />
+                <input id={id} list="client-names" maxLength={LIMITS.name} value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} aria-describedby={d} autoComplete="off" className={inputClass} />
                 <datalist id="client-names">
                   {state.clients.map((c) => (
                     <option key={c.id} value={c.name} />
@@ -291,10 +291,10 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
         {!match && name.trim() && (
           <>
             <Field label="Email" error={errors.email}>
-              {(id, d) => <input id={id} type="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={!!errors.email} aria-describedby={d} className={inputClass} />}
+              {(id, d) => <input id={id} type="email" maxLength={LIMITS.email} value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={!!errors.email} aria-describedby={d} className={inputClass} />}
             </Field>
             <Field label="Phone" error={errors.phone}>
-              {(id, d) => <input id={id} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} aria-invalid={!!errors.phone} aria-describedby={d} className={inputClass} />}
+              {(id, d) => <input id={id} type="tel" maxLength={LIMITS.phone} value={phone} onChange={(e) => setPhone(e.target.value)} aria-invalid={!!errors.phone} aria-describedby={d} className={inputClass} />}
             </Field>
           </>
         )}
@@ -337,7 +337,7 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
           )}
         </Field>
         <div className="sm:col-span-2">
-          <Field label="Notes">{(id) => <input id={id} value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} placeholder="Optional" />}</Field>
+          <Field label="Notes">{(id) => <input id={id} maxLength={LIMITS.notes} value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} placeholder="Optional" />}</Field>
         </div>
         <button type="submit" hidden />
       </form>
