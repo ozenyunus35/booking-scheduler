@@ -142,7 +142,7 @@ export function Clients() {
 
   return (
     <div>
-      <PageHeader title={t("Clients")} description={`${s.clients.length} clients · ${recent} visited this month`} actions={
+      <PageHeader title={t("Clients")} description={t("{n} clients · {recent} visited this month", { n: s.clients.length, recent })} actions={
           <>
             <Button onClick={() => download(`halden-clients-${today}.csv`, clientsCsv(s))}>
               <Download /> {t("Export CSV")}

@@ -396,4 +396,5 @@ export const TR: Record<string, string> = {
   "Enter your name.": "Adınızı girin.",
   "Enter a valid email address.": "Geçerli bir e-posta adresi girin.",
   "Enter a phone number we can text a reminder to.": "Hatırlatma mesajı gönderebileceğimiz bir telefon numarası girin.",
+  "{n} clients · {recent} visited this month": "{n} müşteri · bu ay {recent} ziyaret",
 };
