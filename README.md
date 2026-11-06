@@ -75,6 +75,8 @@ appointments to move them, and manages services, working hours, time off and boo
 | ![Booking page](docs/booking.png) | ![Day view](docs/calendar.png) |
 | **Week view** | **Dashboard** |
 | ![Week view](docs/week.png) | ![Dashboard](docs/dashboard.png) |
+| **Console in Turkish** | **Command palette** |
+| ![Dashboard in Turkish](docs/turkish.png) | ![Command palette finding a client](docs/palette.png) |
 
 <p align="center"><img src="docs/mobile.png" width="260" alt="Booking on a phone"></p>
 
