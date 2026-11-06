@@ -207,7 +207,7 @@ export function Dashboard() {
 
       <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
         <Card>
-          <CardHeader title={t("Today")} icon={CalendarDays} meta={`${s.bookings.filter((b) => b.date === o.today && b.status !== "cancelled").length} appointments`} />
+          <CardHeader title={t("Today")} icon={CalendarDays} meta={t("{n} appointments", { n: s.bookings.filter((b) => b.date === o.today && b.status !== "cancelled").length })} />
           <div className="max-h-[420px] overflow-y-auto">
             <Agenda s={s} now={now} onOpen={setOpen} />
           </div>
