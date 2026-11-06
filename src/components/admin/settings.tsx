@@ -8,6 +8,7 @@ import type { Rules } from "@/lib/types";
 import { useToast } from "../toast";
 import { Button, Card, CardHeader, Field, Modal, PageHeader, Spinner } from "../ui";
 import { selectClass } from "./booking-dialogs";
+import { useT } from "@/lib/i18n";
 
 const OPTIONS: Record<keyof Rules, { value: number; label: string }[]> = {
   slotStep: [10, 15, 20, 30, 60].map((v) => ({ value: v, label: `Every ${v} min` })),
@@ -36,6 +37,7 @@ const LABELS: Record<keyof Rules, { label: string; hint: string }> = {
 };
 
 export function Settings() {
+  const t = useT();
   const s = useStore();
   const { toast } = useToast();
   const [rules, setRules] = useState<Rules | null>(null);
@@ -47,10 +49,10 @@ export function Settings() {
 
   return (
     <div className="max-w-3xl">
-      <PageHeader title="Settings" description="Rules for online booking and details shown to clients." />
+      <PageHeader title={t("Settings")} description={t("Rules for online booking and details shown to clients.")} />
       <div className="space-y-3">
         <Card>
-          <CardHeader title="Booking rules" />
+          <CardHeader title={t("Booking rules")} />
           <form
             className="p-4"
             onSubmit={(e) => {
@@ -59,17 +61,17 @@ export function Settings() {
                 d.rules = v;
               });
               setRules(null);
-              toast("Booking rules saved. The booking page uses them straight away.");
+              toast(t("Booking rules saved. The booking page uses them straight away."));
             }}
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {(Object.keys(OPTIONS) as (keyof Rules)[]).map((k) => (
-                <Field key={k} label={LABELS[k].label} hint={LABELS[k].hint}>
+                <Field key={k} label={t(LABELS[k].label)} hint={t(LABELS[k].hint)}>
                   {(id, d) => (
                     <select id={id} aria-describedby={d} value={v[k]} onChange={(e) => setRules({ ...v, [k]: Number(e.target.value) })} className={selectClass}>
                       {OPTIONS[k].map((o) => (
                         <option key={o.value} value={o.value}>
-                          {o.label}
+                          {t(o.label)}
                         </option>
                       ))}
                     </select>
@@ -80,27 +82,27 @@ export function Settings() {
             <div className="mt-4 flex justify-end gap-2">
               {dirty && (
                 <Button type="button" variant="ghost" onClick={() => setRules(null)}>
-                  Discard
+                  {t("Discard")}
                 </Button>
               )}
               <Button type="submit" variant="primary" disabled={!dirty}>
-                Save rules
+                {t("Save rules")}
               </Button>
             </div>
           </form>
         </Card>
 
         <Card>
-          <CardHeader title="Salon" />
+          <CardHeader title={t("Salon")} />
           <dl className="grid grid-cols-1 gap-x-6 gap-y-3 p-4 sm:grid-cols-2">
             {[
               ["Name", s.salon.name],
               ["Address", s.salon.address],
               ["Phone", s.salon.phone],
-              ["Time zone", `${s.salon.timeZone.replace("_", " ")} (all times are salon time)`],
+              ["Time zone", `${s.salon.timeZone.replace("_", " ")} (${t("all times are salon time")})`],
             ].map(([k, val]) => (
               <div key={k}>
-                <dt className="text-xs text-muted">{k}</dt>
+                <dt className="text-xs text-muted">{t(k)}</dt>
                 <dd className="font-medium">{val}</dd>
               </div>
             ))}
@@ -108,7 +110,7 @@ export function Settings() {
         </Card>
 
         <Card>
-          <CardHeader title="Booking page" />
+          <CardHeader title={t("Booking page")} />
           <div className="flex flex-wrap items-center gap-2 p-4">
             <code className="min-w-0 flex-1 truncate rounded-md bg-surface-2 px-2.5 py-1.5 font-mono text-xs">{link}</code>
             <Button
@@ -116,26 +118,26 @@ export function Settings() {
               onClick={async () => {
                 try {
                   await navigator.clipboard.writeText(link);
-                  toast("Link copied.");
+                  toast(t("Link copied."));
                 } catch {
-                  toast("Couldn't copy the link.", "error");
+                  toast(t("Couldn't copy the link."), "error");
                 }
               }}
             >
-              <Copy /> Copy
+              <Copy /> {t("Copy")}
             </Button>
             <Link href="/" target="_blank" className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2.5 font-medium hover:bg-surface-2 [&_svg]:size-3.5">
-              Open <ArrowUpRight />
+              {t("Open")} <ArrowUpRight />
             </Link>
           </div>
         </Card>
 
         <Card>
-          <CardHeader title="Demo data" />
+          <CardHeader title={t("Demo data")} />
           <div className="flex flex-wrap items-center gap-3 p-4">
-            <p className="min-w-0 flex-1 text-muted">Everything here is synthetic and lives in this browser. The demo also refreshes itself each new day so the calendar stays current.</p>
+            <p className="min-w-0 flex-1 text-muted">{t("Everything here is synthetic and lives in this browser. The demo also refreshes itself each new day so the calendar stays current.")}</p>
             <Button variant="danger" size="sm" onClick={() => setConfirmReset(true)}>
-              <RotateCcw /> Reset demo data
+              <RotateCcw /> {t("Reset demo data")}
             </Button>
           </div>
         </Card>
@@ -144,25 +146,25 @@ export function Settings() {
       <Modal
         open={confirmReset}
         onClose={() => setConfirmReset(false)}
-        title="Reset demo data?"
+        title={t("Reset demo data?")}
         footer={
           <>
-            <Button onClick={() => setConfirmReset(false)}>Cancel</Button>
+            <Button onClick={() => setConfirmReset(false)}>{t("Cancel")}</Button>
             <Button
               variant="danger"
               onClick={() => {
                 resetDemo();
                 setConfirmReset(false);
                 setRules(null);
-                toast("Demo data was reset.");
+                toast(t("Demo data was reset."));
               }}
             >
-              <RotateCcw /> Reset
+              <RotateCcw /> {t("Reset")}
             </Button>
           </>
         }
       >
-        <p className="text-muted">Your bookings, edits to services, hours and rules are removed and the original synthetic salon is restored.</p>
+        <p className="text-muted">{t("Your bookings, edits to services, hours and rules are removed and the original synthetic salon is restored.")}</p>
       </Modal>
     </div>
   );

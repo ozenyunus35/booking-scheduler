@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { bookingServiceIds, bookingTitle, bookingWindow, checkSlot, isLive, offReason, workingMinutes } from "@/lib/availability";
 import { moveBooking, reasonText } from "@/lib/api";
-import { addDays, formatDayLong, formatHour, formatTime, startOfWeek, weekday, weekdayShort } from "@/lib/dates";
+import { addDays, formatDayLong, formatDayMonth, formatHour, formatTime, startOfWeek, weekday, weekdayShort } from "@/lib/dates";
 import { firstName, money, pct } from "@/lib/format";
 import { update, useStore } from "@/lib/store";
 import type { Booking, DemoState, ISODate, Staff } from "@/lib/types";
@@ -14,6 +14,7 @@ import { useToast } from "../toast";
 import { Avatar, Button, Modal, Spinner, cx } from "../ui";
 import { isFresh } from "./arrivals";
 import { BookingDetails, NewBooking, inlineSelectClass, type NewBookingDraft } from "./booking-dialogs";
+import { useT } from "@/lib/i18n";
 
 const PX = 1.5; // pixels per minute
 const SNAP = 15;
@@ -76,6 +77,7 @@ function HourLines({ range }: { range: { start: number; end: number } }) {
 
 /** Greyed-out time when someone isn't available: outside hours, breaks, part-day time off. */
 function Unavailable({ s, staff, date, range, compact }: { s: DemoState; staff: Staff; date: ISODate; range: { start: number; end: number }; compact?: boolean }) {
+  const t = useT();
   const off = offReason(s, staff, date);
   if (off) {
     const t = s.timeOff.find((x) => x.staffId === staff.id && date >= x.from && date <= x.to && x.start == null);
@@ -89,8 +91,8 @@ function Unavailable({ s, staff, date, range, compact }: { s: DemoState; staff: 
   const blocks: { start: number; end: number; label?: string }[] = [];
   if (h.start > range.start) blocks.push({ start: range.start, end: h.start });
   if (h.end < range.end) blocks.push({ start: h.end, end: range.end });
-  for (const b of h.breaks) blocks.push({ ...b, label: "Break" });
-  for (const t of s.timeOff) if (t.staffId === staff.id && date >= t.from && date <= t.to && t.start != null && t.end != null) blocks.push({ start: t.start, end: t.end, label: t.reason });
+  for (const b of h.breaks) blocks.push({ ...b, label: t("Break") });
+  for (const off of s.timeOff) if (off.staffId === staff.id && date >= off.from && date <= off.to && off.start != null && off.end != null) blocks.push({ start: off.start, end: off.end, label: off.reason });
   return (
     <>
       {blocks.map((b, i) => (
@@ -103,6 +105,7 @@ function Unavailable({ s, staff, date, range, compact }: { s: DemoState; staff: 
 }
 
 function Appointment({ s, b, top, compact, onOpen, onPointerDown, dragging }: { s: DemoState; b: Booking; top: number; compact?: boolean; onOpen: () => void; onPointerDown?: (e: React.PointerEvent) => void; dragging?: boolean }) {
+  const t = useT();
   const ids = bookingServiceIds(b);
   const lastService = s.services.find((x) => x.id === ids[ids.length - 1]);
   const title = bookingTitle(s, b);
@@ -137,9 +140,9 @@ function Appointment({ s, b, top, compact, onOpen, onPointerDown, dragging }: { 
         ) : (
           <>
             <span className="flex items-center gap-1 truncate font-medium text-text">
-              {b.source === "online" && <Globe className="size-3 shrink-0 text-accent" aria-label="Booked online" />}
-              {b.seriesId && <Repeat className="size-3 shrink-0 text-muted" aria-label="Repeating appointment" />}
-              {noShows >= 2 && b.status === "confirmed" && <AlertTriangle className="size-3 shrink-0 text-danger" aria-label={`${noShows} no-shows before`} />}
+              {b.source === "online" && <Globe className="size-3 shrink-0 text-accent" aria-label={t("Booked online")} />}
+              {b.seriesId && <Repeat className="size-3 shrink-0 text-muted" aria-label={t("Repeating appointment")} />}
+              {noShows >= 2 && b.status === "confirmed" && <AlertTriangle className="size-3 shrink-0 text-danger" aria-label={t("{n} no-shows before", { n: noShows })} />}
               <span className="truncate">{client?.name}</span>
             </span>
             {h >= 34 && <span className="block truncate">{title}</span>}
@@ -178,6 +181,7 @@ interface Drag {
 
 function DayView({ s, now, date, range, showCancelled, onOpen, onCreate }: { s: DemoState; now: number; date: ISODate; range: { start: number; end: number }; showCancelled: boolean; onOpen: (id: string) => void; onCreate: (d: NewBookingDraft) => void }) {
   const { toast } = useToast();
+  const t = useT();
   const cols = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   // A drag ends with a click on the appointment; swallow that one so it doesn't open the details.
@@ -211,7 +215,7 @@ function DayView({ s, now, date, range, showCancelled, onOpen, onCreate }: { s: 
     update((d) => {
       r = moveBooking(d, drag.id, { date, start: drag.start, staffId: drag.staffId }, Date.now(), false);
     });
-    if (r?.ok) toast(`Moved to ${formatTime(drag.start)} with ${firstName(s.staff.find((p) => p.id === drag.staffId)!.name)}.`);
+    if (r?.ok) toast(t("Moved to {time} with {staff}.", { time: formatTime(drag.start), staff: firstName(s.staff.find((p) => p.id === drag.staffId)!.name) }));
     else if (r) toast(r.error, "error");
   };
 
@@ -321,6 +325,7 @@ function ColumnHeader({ title, sub, avatar, active, onClick }: { title: string; 
 }
 
 export function Calendar() {
+  const t = useT();
   const s = useStore();
   const now = useNow();
   const params = useParams();
@@ -375,7 +380,7 @@ export function Calendar() {
     return () => window.removeEventListener("keydown", onKey);
   }, [ready, date, today, view]);
 
-  if (!s || !now) return <Spinner label="Loading calendar" />;
+  if (!s || !now) return <Spinner label={t("Loading calendar")} />;
 
   const range = gridRange(s, view === "day" ? [date] : week);
   const dayBookings = s.bookings.filter((b) => b.date === date && isLive(b));
@@ -384,7 +389,7 @@ export function Calendar() {
   const worked = s.staff.reduce((n, p) => n + workingMinutes(s, p, date), 0);
   const step = view === "day" ? 1 : 7;
   const openBooking = open ? s.bookings.find((b) => b.id === open) : undefined;
-  const label = view === "day" ? formatDayLong(date) : `${formatDayLong(week[0]).replace(/^\w+, /, "")} – ${formatDayLong(week[6]).replace(/^\w+, /, "")}`;
+  const label = view === "day" ? formatDayLong(date) : `${formatDayMonth(week[0])} – ${formatDayMonth(week[6])}`;
 
   return (
     <div className="flex flex-col">
@@ -394,23 +399,23 @@ export function Calendar() {
         </h1>
         <div className="flex items-center gap-1">
           <Button size="sm" onClick={() => setPicked(null)} disabled={date === today}>
-            Today
+            {t("Today")}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setPicked(addDays(date, -step))} aria-label={view === "day" ? "Previous day" : "Previous week"}>
+          <Button size="sm" variant="ghost" onClick={() => setPicked(addDays(date, -step))} aria-label={view === "day" ? t("Previous day") : t("Previous week")}>
             <ChevronLeft />
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setPicked(addDays(date, step))} aria-label={view === "day" ? "Next day" : "Next week"}>
+          <Button size="sm" variant="ghost" onClick={() => setPicked(addDays(date, step))} aria-label={view === "day" ? t("Next day") : t("Next week")}>
             <ChevronRight />
           </Button>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <label className="hidden items-center gap-1.5 text-xs text-muted sm:flex">
             <input type="checkbox" checked={showCancelled} onChange={(e) => setShowCancelled(e.target.checked)} className="accent-[var(--accent)]" />
-            Show cancelled
+            {t("Show cancelled")}
           </label>
           {view === "week" && (
-            <select value={staffId} onChange={(e) => setStaffId(e.target.value)} className={cx(inlineSelectClass, "h-7")} aria-label="Staff">
-              <option value="all">Whole team</option>
+            <select value={staffId} onChange={(e) => setStaffId(e.target.value)} className={cx(inlineSelectClass, "h-7")} aria-label={t("Staff")}>
+              <option value="all">{t("Whole team")}</option>
               {s.staff.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -418,15 +423,15 @@ export function Calendar() {
               ))}
             </select>
           )}
-          <div className="flex rounded-md border border-border p-0.5" role="group" aria-label="View">
+          <div className="flex rounded-md border border-border p-0.5" role="group" aria-label={t("View")}>
             {(["day", "week"] as const).map((v) => (
               <button key={v} onClick={() => setView(v)} aria-pressed={view === v} className={cx("h-6 rounded px-2.5 text-xs font-medium capitalize", view === v ? "bg-surface-3 text-text" : "text-muted hover:text-text")}>
-                {v}
+                {v === "day" ? t("Day") : t("Week")}
               </button>
             ))}
           </div>
           <Button size="sm" variant="primary" onClick={() => setDraft({ date: date < today ? today : date })}>
-            <Plus /> New booking
+            <Plus /> {t("New booking")}
           </Button>
         </div>
       </div>
@@ -435,12 +440,12 @@ export function Calendar() {
         <dl className="mb-4 grid grid-cols-2 gap-x-6 gap-y-2 text-muted sm:flex sm:flex-wrap">
           {[
             ["Appointments", String(dayBookings.length)],
-            ["Booked", worked ? pct(booked / worked) : "Closed"],
+            ["Booked", worked ? pct(booked / worked) : t("Closed")],
             ["Expected revenue", money(revenue)],
             ["Online", String(dayBookings.filter((b) => b.source === "online").length)],
           ].map(([k, v]) => (
             <div key={k} className="flex items-baseline gap-1.5">
-              <dt>{k}</dt>
+              <dt>{t(k)}</dt>
               <dd className="font-semibold text-text tabular-nums">{v}</dd>
             </div>
           ))}
@@ -458,7 +463,7 @@ export function Calendar() {
                   const used = mine.reduce((n, b) => n + b.end - b.start, 0);
                   return (
                     <div key={p.id} className="flex min-w-[150px] flex-1">
-                      <ColumnHeader title={firstName(p.name)} sub={mins ? `${mine.length} appts · ${pct(used / mins)}` : "Off"} avatar={p.name} />
+                      <ColumnHeader title={firstName(p.name)} sub={mins ? `${t("{n} appts", { n: mine.length })} · ${pct(used / mins)}` : t("Off")} avatar={p.name} />
                     </div>
                   );
                 })
@@ -468,7 +473,7 @@ export function Calendar() {
                     <div key={d} className="flex min-w-[120px] flex-1">
                       <ColumnHeader
                         title={`${weekdayShort(d)} ${Number(d.slice(8))}`}
-                        sub={`${n} appts`}
+                        sub={t("{n} appts", { n })}
                         active={d === today}
                         onClick={() => {
                           setPicked(d);
@@ -487,14 +492,14 @@ export function Calendar() {
         )}
       </div>
       <p className="mt-2 text-xs text-muted">
-        <span className="hidden sm:inline">Click an empty slot to add a booking, drag an appointment to move it. </span>
-        <Globe className="inline size-3 text-accent" aria-hidden /> booked online · <Repeat className="inline size-3" aria-hidden /> repeating · <AlertTriangle className="inline size-3 text-danger" aria-hidden /> 2+ no-shows · hatched time is a break, time off or clean-up buffer.
+        <span className="hidden sm:inline">{t("Click an empty slot to add a booking, drag an appointment to move it.")} </span>
+        <Globe className="inline size-3 text-accent" aria-hidden /> {t("booked online ·")} <Repeat className="inline size-3" aria-hidden /> {t("repeating ·")} <AlertTriangle className="inline size-3 text-danger" aria-hidden /> {t("2+ no-shows · hatched time is a break, time off or clean-up buffer.")}
         <button onClick={() => setHelp(true)} className="ml-2 hidden items-center gap-1 align-middle font-medium text-accent hover:underline sm:inline-flex">
-          <Keyboard className="size-3.5" aria-hidden /> Shortcuts
+          <Keyboard className="size-3.5" aria-hidden /> {t("Shortcuts")}
         </button>
       </p>
 
-      <Modal open={help} onClose={() => setHelp(false)} title="Keyboard shortcuts">
+      <Modal open={help} onClose={() => setHelp(false)} title={t("Keyboard shortcuts")}>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
           {[
             ["T", "Go to today"],
@@ -507,7 +512,7 @@ export function Calendar() {
               <dt>
                 <kbd className="rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-xs">{k}</kbd>
               </dt>
-              <dd className="text-muted">{v}</dd>
+              <dd className="text-muted">{t(v)}</dd>
             </div>
           ))}
         </dl>

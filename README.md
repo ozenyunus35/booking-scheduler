@@ -65,6 +65,10 @@ appointments to move them, and manages services, working hours, time off and boo
   the full text, plus the reminder texts due in the next two days.
 - CSV exports of clients and bookings (quoted, formula-safe, UTF-8 with a BOM for Excel), a warning icon on clients
   with two or more no-shows, and keyboard shortcuts in the calendar (T, ← →, D, W, N, ?).
+- English and Turkish salon console: every page, status and message, with 24-hour times, Turkish dates and amounts
+  in Turkish mode. The public booking pages and the texts sent to clients stay in English, since Halden is a Brooklyn salon.
+- A ⌘K command palette: jump to any page, open any client (search by name, email or phone), find a service or a team
+  member, reset the demo, switch theme or language. Clients can be linked with `/admin/clients/?c=…`.
 
 | Booking page | Salon calendar |
 | --- | --- |

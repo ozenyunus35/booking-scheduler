@@ -11,10 +11,12 @@ import type { DayPart, DemoState, WaitlistEntry } from "@/lib/types";
 import { useNow } from "@/lib/use-now";
 import { useToast } from "../toast";
 import { Avatar, Badge, Button, Card, EmptyState, PageHeader, Spinner, cx } from "../ui";
+import { useLang, useT } from "@/lib/i18n";
 
 const PART: Record<DayPart, string> = { any: "Any time", morning: "Morning", afternoon: "Afternoon", evening: "Evening" };
 
 function Row({ s, e, now }: { s: DemoState; e: WaitlistEntry; now: number }) {
+  const { t, lang } = useLang();
   const { toast } = useToast();
   const client = s.clients.find((c) => c.id === e.clientId);
   const { today } = bookingWindow(s, now);
@@ -29,7 +31,7 @@ function Row({ s, e, now }: { s: DemoState; e: WaitlistEntry; now: number }) {
     update((d) => {
       r = bookFromWaitlist(d, e.id, picked.start, picked.staffIds[0], Date.now());
     });
-    if (r?.ok) toast(`Booked ${client ? firstName(client.name) : "the client"} at ${formatTime(picked.start)} with ${staffName(picked.staffIds[0])}. A confirmation is in Messages.`);
+    if (r?.ok) toast(t("Booked {client} at {time} with {staff}. A confirmation is in Messages.", { client: client ? firstName(client.name) : t("the client"), time: formatTime(picked.start), staff: staffName(picked.staffIds[0]) }));
     else if (r) toast(r.error, "error");
   };
 
@@ -40,10 +42,10 @@ function Row({ s, e, now }: { s: DemoState; e: WaitlistEntry; now: number }) {
         <div className="min-w-0">
           <p className="truncate font-medium">{client?.name ?? "Unknown client"}</p>
           <p className="truncate text-muted">
-            {bookingTitle(s, e)} · {e.staffId === "any" ? "anyone" : staffName(e.staffId)} · {relativeDay(e.date, today)}, {PART[e.part].toLowerCase()}
+            {bookingTitle(s, e)} · {e.staffId === "any" ? t("anyone") : staffName(e.staffId)} · {relativeDay(e.date, today)}, {t(PART[e.part]).toLocaleLowerCase(lang)}
           </p>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-faint">
-            <span>Joined {timeAgo(e.createdAt, now)}</span>
+            <span>{t("Joined {time}", { time: timeAgo(e.createdAt, now) })}</span>
             {client && (
               <a href={`tel:${client.phone.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1 hover:text-accent">
                 <Phone className="size-3" aria-hidden /> {client.phone}
@@ -51,7 +53,7 @@ function Row({ s, e, now }: { s: DemoState; e: WaitlistEntry; now: number }) {
             )}
             {e.notifiedAt && (
               <span className="inline-flex items-center gap-1 text-accent">
-                <BellRing className="size-3" aria-hidden /> Texted {timeAgo(e.notifiedAt, now)}
+                <BellRing className="size-3" aria-hidden /> {t("Texted {time}", { time: timeAgo(e.notifiedAt, now) })}
               </span>
             )}
           </p>
@@ -60,9 +62,9 @@ function Row({ s, e, now }: { s: DemoState; e: WaitlistEntry; now: number }) {
       <div className="flex flex-wrap items-center gap-2 sm:justify-end">
         {open.length ? (
           <>
-            <Badge tone="success">{open.length === 1 ? "1 time free" : `${open.length} times free`}</Badge>
+            <Badge tone="success">{t(open.length === 1 ? "{n} time free" : "{n} times free", { n: open.length })}</Badge>
             <label className="sr-only" htmlFor={`slot-${e.id}`}>
-              Time for {client?.name}
+              {t("Time for {name}", { name: client?.name ?? "" })}
             </label>
             <select id={`slot-${e.id}`} value={picked ? String(picked.start) : ""} onChange={(x) => setChoice(x.target.value)} className="h-7 rounded-md border border-border bg-surface px-2 text-xs">
               {open.map((o) => (
@@ -72,19 +74,19 @@ function Row({ s, e, now }: { s: DemoState; e: WaitlistEntry; now: number }) {
               ))}
             </select>
             <Button size="sm" variant="primary" onClick={book}>
-              <CalendarPlus /> Book
+              <CalendarPlus /> {t("Book")}
             </Button>
           </>
         ) : (
-          <Badge>Still full</Badge>
+          <Badge>{t("Still full")}</Badge>
         )}
         <Button
           size="sm"
           variant="ghost"
-          aria-label={`Remove ${client?.name ?? "entry"} from the waitlist`}
+          aria-label={t("Remove {name} from the waitlist", { name: client?.name ?? t("entry") })}
           onClick={() => {
             update((d) => removeFromWaitlist(d, e.id));
-            toast("Removed from the waitlist.");
+            toast(t("Removed from the waitlist."));
           }}
         >
           <X />
@@ -100,6 +102,7 @@ function Row({ s, e, now }: { s: DemoState; e: WaitlistEntry; now: number }) {
  * client has already had a text about it, which is in Messages.
  */
 export function Waitlist() {
+  const t = useT();
   const s = useStore();
   const now = useNow();
   if (!s || !now) return <Spinner />;
@@ -111,18 +114,18 @@ export function Waitlist() {
   return (
     <div>
       <PageHeader
-        title="Waitlist"
-        description="Clients waiting for a day that was full. When a time frees up they get a text, and you can book them here."
+        title={t("Waitlist")}
+        description={t("Clients waiting for a day that was full. When a time frees up they get a text, and you can book them here.")}
       />
       <div className="mb-4 flex flex-wrap gap-2 text-xs text-muted">
         <span className="rounded-md border border-border px-2 py-1">
-          <span className="font-semibold text-text tabular-nums">{waiting.length}</span> waiting
+          <span className="font-semibold text-text tabular-nums">{waiting.length}</span> {t("waiting")}
         </span>
         <span className={cx("rounded-md border px-2 py-1", ready.length ? "border-success/40 text-success" : "border-border")}>
-          <span className="font-semibold tabular-nums">{ready.length}</span> with a free time now
+          <span className="font-semibold tabular-nums">{ready.length}</span> {t("with a free time now")}
         </span>
         <span className="rounded-md border border-border px-2 py-1">
-          <span className="font-semibold text-text tabular-nums">{booked}</span> booked from the waitlist
+          <span className="font-semibold text-text tabular-nums">{booked}</span> {t("booked from the waitlist")}
         </span>
       </div>
       <Card>
@@ -133,7 +136,7 @@ export function Waitlist() {
             ))}
           </ul>
         ) : (
-          <EmptyState icon={ListTodo} title="No one is waiting" text="When a day is full, the booking page offers a waitlist. Entries show up here." />
+          <EmptyState icon={ListTodo} title={t("No one is waiting")} text={t("When a day is full, the booking page offers a waitlist. Entries show up here.")} />
         )}
       </Card>
     </div>

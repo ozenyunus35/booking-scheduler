@@ -11,11 +11,13 @@ import type { DayHours, DemoState, ISODate, Staff, TimeOff } from "@/lib/types";
 import { useNow } from "@/lib/use-now";
 import { useToast } from "../toast";
 import { Avatar, Button, Card, Field, Meter, Modal, PageHeader, Spinner, cx, inputClass } from "../ui";
+import { useT } from "@/lib/i18n";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const short = (m: number) => formatTime(m).replace(":00", "").replace(" ", "").toLowerCase();
 
 function HoursForm({ staff, onClose }: { staff: Staff; onClose: () => void }) {
+  const t = useT();
   const { toast } = useToast();
   const [rows, setRows] = useState(() =>
     staff.hours.map((h) => ({ on: !!h, start: toTimeInput(h?.start ?? 540), end: toTimeInput(h?.end ?? 1020), bStart: toTimeInput(h?.breaks[0]?.start ?? 780), bEnd: toTimeInput(h?.breaks[0]?.end ?? 810), hasBreak: h ? h.breaks.length > 0 : true })),
@@ -49,16 +51,16 @@ function HoursForm({ staff, onClose }: { staff: Staff; onClose: () => void }) {
       }
       const start = parseTime(r.start);
       const end = parseTime(r.end);
-      if (!(end > start)) return setError(`${DAYS[i]}: the day has to end after it starts.`);
+      if (!(end > start)) return setError(`${t(DAYS[i])}: ${t("the day has to end after it starts.")}`);
       const breaks = r.hasBreak ? [{ start: parseTime(r.bStart), end: parseTime(r.bEnd) }] : [];
-      if (breaks[0] && !(breaks[0].start >= start && breaks[0].end <= end && breaks[0].end > breaks[0].start)) return setError(`${DAYS[i]}: the break has to sit inside working hours.`);
+      if (breaks[0] && !(breaks[0].start >= start && breaks[0].end <= end && breaks[0].end > breaks[0].start)) return setError(`${t(DAYS[i])}: ${t("the break has to sit inside working hours.")}`);
       hours.push({ start, end, breaks });
     }
     update((d) => {
       const p = d.staff.find((x) => x.id === staff.id);
       if (p) p.hours = hours;
     });
-    toast(`${firstName(staff.name)}'s hours saved. Online availability updated.`);
+    toast(t("Hours saved for {name}. Online availability updated.", { name: firstName(staff.name) }));
     onClose();
   };
 
@@ -67,12 +69,12 @@ function HoursForm({ staff, onClose }: { staff: Staff; onClose: () => void }) {
       open
       wide
       onClose={onClose}
-      title={`${staff.name}: working hours`}
+      title={t("{name}: working hours", { name: staff.name })}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" type="submit" form="hours-form">
-            Save hours
+            {t("Save hours")}
           </Button>
         </>
       }
@@ -82,10 +84,10 @@ function HoursForm({ staff, onClose }: { staff: Staff; onClose: () => void }) {
           <table className="w-full min-w-[560px]">
             <thead>
               <tr className="text-left text-xs text-muted">
-                <th className="py-1.5 font-medium">Day</th>
-                <th className="py-1.5 font-medium">Starts</th>
-                <th className="py-1.5 font-medium">Ends</th>
-                <th className="py-1.5 font-medium">Break</th>
+                <th className="py-1.5 font-medium">{t("Day")}</th>
+                <th className="py-1.5 font-medium">{t("Starts")}</th>
+                <th className="py-1.5 font-medium">{t("Ends")}</th>
+                <th className="py-1.5 font-medium">{t("Break")}</th>
               </tr>
             </thead>
             <tbody>
@@ -94,7 +96,7 @@ function HoursForm({ staff, onClose }: { staff: Staff; onClose: () => void }) {
                   <td className="py-2 pr-3">
                     <label className="flex items-center gap-2 font-medium">
                       <input type="checkbox" className="accent-[var(--accent)]" checked={r.on} onChange={(e) => set(i, { on: e.target.checked })} />
-                      {DAYS[i]}
+                      {t(DAYS[i])}
                     </label>
                   </td>
                   {r.on ? (
@@ -116,7 +118,7 @@ function HoursForm({ staff, onClose }: { staff: Staff; onClose: () => void }) {
                     </>
                   ) : (
                     <td colSpan={3} className="py-2 text-muted">
-                      Day off
+                      {t("Day off")}
                     </td>
                   )}
                 </tr>
@@ -131,16 +133,17 @@ function HoursForm({ staff, onClose }: { staff: Staff; onClose: () => void }) {
         )}
         {outside > 0 && (
           <p className="mt-3 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-warning">
-            {outside} upcoming appointment{outside === 1 ? "" : "s"} fall outside these hours. They stay booked: move them from the calendar.
+            {t(outside === 1 ? "{n} upcoming appointment falls outside these hours. It stays booked: move it from the calendar." : "{n} upcoming appointments fall outside these hours. They stay booked: move them from the calendar.", { n: outside })}
           </p>
         )}
-        <p className="mt-3 text-xs text-muted">Existing appointments stay where they are. Only new online times follow the new hours.</p>
+        <p className="mt-3 text-xs text-muted">{t("Existing appointments stay where they are. Only new online times follow the new hours.")}</p>
       </form>
     </Modal>
   );
 }
 
 function TimeOffForm({ s, staff, today, onClose }: { s: DemoState; staff: Staff; today: ISODate; onClose: () => void }) {
+  const t = useT();
   const { toast } = useToast();
   const [from, setFrom] = useState(addDays(today, 1));
   const [to, setTo] = useState(addDays(today, 1));
@@ -156,13 +159,13 @@ function TimeOffForm({ s, staff, today, onClose }: { s: DemoState; staff: Staff;
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!part && to < from) return setError("The last day has to be on or after the first.");
-    if (part && !(parseTime(end) > parseTime(start))) return setError("The time off has to end after it starts.");
-    const entry: TimeOff = { id: `off-${Date.now().toString(36)}`, staffId: staff.id, from, to: lastDay, reason: reason.trim() || "Time off", ...(part ? { start: parseTime(start), end: parseTime(end) } : {}) };
+    if (!part && to < from) return setError(t("The last day has to be on or after the first."));
+    if (part && !(parseTime(end) > parseTime(start))) return setError(t("The time off has to end after it starts."));
+    const entry: TimeOff = { id: `off-${Date.now().toString(36)}`, staffId: staff.id, from, to: lastDay, reason: reason.trim() || t("Time off"), ...(part ? { start: parseTime(start), end: parseTime(end) } : {}) };
     update((d) => {
       d.timeOff.push(entry);
     });
-    toast(`Time off added for ${firstName(staff.name)}. Those times are no longer bookable.`);
+    toast(t("Time off added for {name}. Those times are no longer bookable.", { name: firstName(staff.name) }));
     onClose();
   };
 
@@ -170,35 +173,35 @@ function TimeOffForm({ s, staff, today, onClose }: { s: DemoState; staff: Staff;
     <Modal
       open
       onClose={onClose}
-      title={`Time off for ${firstName(staff.name)}`}
+      title={t("Time off for {name}", { name: firstName(staff.name) })}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" type="submit" form="off-form">
-            Add time off
+            {t("Add time off")}
           </Button>
         </>
       }
     >
       <form id="off-form" onSubmit={save} noValidate className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label={part ? "Date" : "First day"}>{(id) => <input id={id} type="date" min={today} value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} className={inputClass} />}</Field>
-        {!part && <Field label="Last day">{(id) => <input id={id} type="date" min={from} value={to} onChange={(e) => e.target.value && setTo(e.target.value)} className={inputClass} />}</Field>}
+        {!part && <Field label={t("Last day")}>{(id) => <input id={id} type="date" min={from} value={to} onChange={(e) => e.target.value && setTo(e.target.value)} className={inputClass} />}</Field>}
         <label className="flex items-center gap-2 sm:col-span-2">
           <input type="checkbox" className="accent-[var(--accent)]" checked={part} onChange={(e) => setPart(e.target.checked)} />
-          Only part of the day
+          {t("Only part of the day")}
         </label>
         {part && (
           <>
-            <Field label="From">{(id) => <input id={id} type="time" step={900} value={start} onChange={(e) => setStart(e.target.value)} className={inputClass} />}</Field>
-            <Field label="Until">{(id) => <input id={id} type="time" step={900} value={end} onChange={(e) => setEnd(e.target.value)} className={inputClass} />}</Field>
+            <Field label={t("From")}>{(id) => <input id={id} type="time" step={900} value={start} onChange={(e) => setStart(e.target.value)} className={inputClass} />}</Field>
+            <Field label={t("Until")}>{(id) => <input id={id} type="time" step={900} value={end} onChange={(e) => setEnd(e.target.value)} className={inputClass} />}</Field>
           </>
         )}
         <div className="sm:col-span-2">
-          <Field label="Reason">{(id) => <input id={id} value={reason} onChange={(e) => setReason(e.target.value)} className={inputClass} />}</Field>
+          <Field label={t("Reason")}>{(id) => <input id={id} value={reason} onChange={(e) => setReason(e.target.value)} className={inputClass} />}</Field>
         </div>
         {clash > 0 && (
           <p className="rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-warning sm:col-span-2">
-            {clash} booked appointment{clash === 1 ? "" : "s"} fall in this time. They stay booked: move them from the calendar.
+            {t(clash === 1 ? "{n} booked appointment falls in this time. It stays booked: move it from the calendar." : "{n} booked appointments fall in this time. They stay booked: move them from the calendar.", { n: clash })}
           </p>
         )}
         {error && (
@@ -216,6 +219,7 @@ function hoursSummary(staff: Staff) {
 }
 
 export function Team() {
+  const t = useT();
   const s = useStore();
   const now = useNow();
   const { toast } = useToast();
@@ -227,7 +231,7 @@ export function Team() {
 
   return (
     <div>
-      <PageHeader title="Team" description="Working hours and time off decide what clients can book online." />
+      <PageHeader title={t("Team")} description={t("Working hours and time off decide what clients can book online.")} />
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {s.staff.map((p) => {
           const upcoming = s.timeOff.filter((t) => t.staffId === p.id && t.to >= today).sort((a, b) => a.from.localeCompare(b.from));
@@ -255,35 +259,35 @@ export function Team() {
               <div className="flex-1 space-y-3 p-4">
                 <div>
                   <div className="mb-1.5 flex justify-between text-xs">
-                    <span className="text-muted">Booked, next 7 days</span>
+                    <span className="text-muted">{t("Booked, next 7 days")}</span>
                     <span className="tabular-nums">
-                      {pct(load)} of {Math.round(weekHours / 60)} h
+                      {t("{pct} of {n} h", { pct: pct(load), n: Math.round(weekHours / 60) })}
                     </span>
                   </div>
-                  <Meter value={Math.round(load * 100)} max={100} label={`${p.name} booked next 7 days`} warn={false} />
+                  <Meter value={Math.round(load * 100)} max={100} label={t("{name} booked next 7 days", { name: p.name })} warn={false} />
                 </div>
                 {upcoming.length > 0 && (
                   <ul className="space-y-1">
-                    {upcoming.map((t) => (
-                      <li key={t.id} className="flex items-center gap-2 rounded-md bg-surface-2 px-2.5 py-1.5">
+                    {upcoming.map((off) => (
+                      <li key={off.id} className="flex items-center gap-2 rounded-md bg-surface-2 px-2.5 py-1.5">
                         <CalendarOff className="size-3.5 shrink-0 text-faint" aria-hidden />
                         <span className="min-w-0 flex-1 truncate">
-                          <span className="font-medium">{t.reason}</span>{" "}
+                          <span className="font-medium">{off.reason}</span>{" "}
                           <span className="text-muted">
-                            {formatDate(t.from)}
-                            {t.to !== t.from && ` – ${formatDate(t.to)}`}
-                            {t.start != null && t.end != null && `, ${formatTime(t.start)}–${formatTime(t.end)}`}
+                            {formatDate(off.from)}
+                            {off.to !== off.from && ` – ${formatDate(off.to)}`}
+                            {off.start != null && off.end != null && `, ${formatTime(off.start)}–${formatTime(off.end)}`}
                           </span>
                         </span>
                         <button
                           onClick={() => {
                             update((d) => {
-                              d.timeOff = d.timeOff.filter((x) => x.id !== t.id);
+                              d.timeOff = d.timeOff.filter((x) => x.id !== off.id);
                             });
-                            toast("Time off removed.");
+                            toast(t("Time off removed."));
                           }}
                           className="rounded p-0.5 text-muted hover:bg-surface-3 hover:text-text"
-                          aria-label={`Remove ${t.reason} for ${p.name}`}
+                          aria-label={`Remove ${off.reason} for ${p.name}`}
                         >
                           <X className="size-3.5" />
                         </button>
@@ -294,10 +298,10 @@ export function Team() {
               </div>
               <div className="flex gap-2 border-t border-border px-4 py-3">
                 <Button size="sm" onClick={() => setHours(p)}>
-                  <Clock /> Edit hours
+                  <Clock /> {t("Edit hours")}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setOff(p)}>
-                  <Plus /> Time off
+                  <Plus /> {t("Time off")}
                 </Button>
               </div>
             </Card>

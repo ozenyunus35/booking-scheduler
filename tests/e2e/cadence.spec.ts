@@ -356,7 +356,7 @@ test("calendar keyboard shortcuts and CSV exports", async ({ page }) => {
   await page.keyboard.press("t");
   await expect(page.getByRole("heading", { level: 1, name: "Thursday, October 29" })).toBeVisible();
   await page.keyboard.press("w");
-  await expect(page.getByRole("button", { name: "week", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Week", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("?");
   await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
   await page.keyboard.press("Escape");

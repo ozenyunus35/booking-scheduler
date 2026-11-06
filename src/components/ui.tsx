@@ -3,6 +3,7 @@
 import { Loader2, X } from "lucide-react";
 import { forwardRef, useEffect, useId, useRef } from "react";
 import { initials } from "@/lib/format";
+import { useT } from "@/lib/i18n";
 
 export const cx = (...c: Array<string | false | null | undefined>) => c.filter(Boolean).join(" ");
 
@@ -102,6 +103,7 @@ export const inputClass =
   "h-8 w-full rounded-md border border-border bg-surface px-2.5 text-[13px] shadow-card transition-colors placeholder:text-faint hover:border-border-strong focus:border-accent focus:outline-none aria-[invalid=true]:border-danger";
 
 export function Modal({ open, onClose, title, children, footer, wide }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean }) {
+  const t = useT();
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useEffect(() => {
@@ -124,7 +126,7 @@ export function Modal({ open, onClose, title, children, footer, wide }: { open: 
             <h2 id={titleId} className="truncate text-[13px] font-semibold">
               {title}
             </h2>
-            <button onClick={onClose} className="rounded-md p-1 text-muted hover:bg-surface-2 hover:text-text" aria-label="Close dialog">
+            <button onClick={onClose} className="rounded-md p-1 text-muted hover:bg-surface-2 hover:text-text" aria-label={t("Close dialog")}>
               <X className="size-4" />
             </button>
           </div>

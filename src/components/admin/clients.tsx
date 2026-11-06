@@ -2,6 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Download, Plus, Search, Users } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { bookingTitle, bookingWindow } from "@/lib/availability";
 import { formatDate, formatTime, relativeDay } from "@/lib/dates";
 import { clientsCsv, download } from "@/lib/csv";
@@ -13,11 +14,13 @@ import { useNow } from "@/lib/use-now";
 import { useToast } from "../toast";
 import { Avatar, Badge, Button, Card, EmptyState, Field, Modal, PageHeader, Spinner, cx, inputClass } from "../ui";
 import { NewBooking, STATUS_TONE, inlineSelectClass } from "./booking-dialogs";
+import { useT } from "@/lib/i18n";
 
 const PAGE = 20;
 type Sort = "recent" | "spent" | "visits" | "name";
 
 function ClientModal({ s, client, now, onClose, onBook }: { s: DemoState; client: Client; now: number; onClose: () => void; onBook: () => void }) {
+  const t = useT();
   const { toast } = useToast();
   const { today } = bookingWindow(s, now);
   const sum = clientSummary(s, client.id, today);
@@ -30,9 +33,9 @@ function ClientModal({ s, client, now, onClose, onBook }: { s: DemoState; client
       title={client.name}
       footer={
         <>
-          <Button onClick={onClose}>Close</Button>
+          <Button onClick={onClose}>{t("Close")}</Button>
           <Button variant="primary" onClick={onBook}>
-            <Plus /> New booking
+            <Plus /> {t("New booking")}
           </Button>
         </>
       }
@@ -54,11 +57,11 @@ function ClientModal({ s, client, now, onClose, onBook }: { s: DemoState; client
             ].map(([k, v]) => (
               <div key={k} className="rounded-md border border-border px-2 py-2">
                 <dd className="font-semibold tabular-nums">{v}</dd>
-                <dt className="text-[11px] text-muted">{k}</dt>
+                <dt className="text-[11px] text-muted">{t(k)}</dt>
               </div>
             ))}
           </dl>
-          <Field label="Notes" hint="Visible to the team on every booking.">
+          <Field label={t("Notes")} hint={t("Visible to the team on every booking.")}>
             {(id, d) => <textarea id={id} aria-describedby={d} rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} className={cx(inputClass, "h-auto py-2")} />}
           </Field>
           <Button
@@ -69,14 +72,14 @@ function ClientModal({ s, client, now, onClose, onBook }: { s: DemoState; client
                 const c = d.clients.find((x) => x.id === client.id);
                 if (c) c.notes = notes.trim();
               });
-              toast("Notes saved.");
+              toast(t("Notes saved."));
             }}
           >
-            Save notes
+            {t("Save notes")}
           </Button>
         </div>
         <div>
-          <p className="mb-2 text-xs font-medium text-muted">History</p>
+          <p className="mb-2 text-xs font-medium text-muted">{t("History")}</p>
           {sum.visits.length ? (
             <ul className="divide-y divide-border rounded-lg border border-border">
               {sum.visits.slice(0, 30).map((b) => {
@@ -89,16 +92,16 @@ function ClientModal({ s, client, now, onClose, onBook }: { s: DemoState; client
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{bookingTitle(s, b)}</span>
-                      <span className="block truncate text-xs text-muted">with {staff?.name}</span>
+                      <span className="block truncate text-xs text-muted">{t("with {name}", { name: staff?.name ?? "" })}</span>
                     </span>
                     <span className="hidden text-xs tabular-nums sm:block">{money(b.price)}</span>
-                    <Badge tone={STATUS_TONE[b.status]}>{b.status}</Badge>
+                    <Badge tone={STATUS_TONE[b.status]}>{t(b.status)}</Badge>
                   </li>
                 );
               })}
             </ul>
           ) : (
-            <p className="text-muted">No visits yet.</p>
+            <p className="text-muted">{t("No visits yet.")}</p>
           )}
         </div>
       </div>
@@ -107,12 +110,14 @@ function ClientModal({ s, client, now, onClose, onBook }: { s: DemoState; client
 }
 
 export function Clients() {
+  const t = useT();
   const s = useStore();
   const now = useNow();
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<Sort>("recent");
   const [page, setPage] = useState(0);
-  const [open, setOpen] = useState<string | null>(null);
+  const params = useSearchParams();
+  const [open, setOpen] = useState<string | null>(params.get("c"));
   const [booking, setBooking] = useState<string | null>(null);
 
   const today = s && now ? bookingWindow(s, now).today : "";
@@ -137,13 +142,13 @@ export function Clients() {
 
   return (
     <div>
-      <PageHeader title="Clients" description={`${s.clients.length} clients · ${recent} visited this month`} actions={
+      <PageHeader title={t("Clients")} description={`${s.clients.length} clients · ${recent} visited this month`} actions={
           <>
             <Button onClick={() => download(`halden-clients-${today}.csv`, clientsCsv(s))}>
-              <Download /> Export CSV
+              <Download /> {t("Export CSV")}
             </Button>
             <Button variant="primary" onClick={() => setBooking("")}>
-              <Plus /> New booking
+              <Plus /> {t("New booking")}
             </Button>
           </>
         }
@@ -158,30 +163,30 @@ export function Clients() {
                 setQ(e.target.value);
                 setPage(0);
               }}
-              placeholder="Search name, email or phone"
-              aria-label="Search clients"
+              placeholder={t("Search name, email or phone")}
+              aria-label={t("Search clients")}
               className={cx(inputClass, "pl-8")}
             />
           </div>
-          <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={inlineSelectClass} aria-label="Sort by">
-            <option value="recent">Last visit</option>
-            <option value="spent">Most spent</option>
-            <option value="visits">Most visits</option>
-            <option value="name">Name</option>
+          <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={inlineSelectClass} aria-label={t("Sort by")}>
+            <option value="recent">{t("Last visit")}</option>
+            <option value="spent">{t("Most spent")}</option>
+            <option value="visits">{t("Most visits")}</option>
+            <option value="name">{t("Name")}</option>
           </select>
-          <span className="ml-auto text-xs text-muted">{filtered.length} shown</span>
+          <span className="ml-auto text-xs text-muted">{t("{n} shown", { n: filtered.length })}</span>
         </div>
         {shown.length ? (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted">
-                  <th className="px-4 py-2 font-medium">Client</th>
-                  <th className="hidden px-4 py-2 font-medium md:table-cell">Phone</th>
-                  <th className="px-4 py-2 text-right font-medium">Visits</th>
-                  <th className="hidden px-4 py-2 font-medium sm:table-cell">Last visit</th>
-                  <th className="hidden px-4 py-2 font-medium lg:table-cell">Next</th>
-                  <th className="px-4 py-2 text-right font-medium">Spent</th>
+                  <th className="px-4 py-2 font-medium">{t("Client")}</th>
+                  <th className="hidden px-4 py-2 font-medium md:table-cell">{t("Phone")}</th>
+                  <th className="px-4 py-2 text-right font-medium">{t("Visits")}</th>
+                  <th className="hidden px-4 py-2 font-medium sm:table-cell">{t("Last visit")}</th>
+                  <th className="hidden px-4 py-2 font-medium lg:table-cell">{t("Next")}</th>
+                  <th className="px-4 py-2 text-right font-medium">{t("Spent")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -193,7 +198,7 @@ export function Clients() {
                         <span className="min-w-0">
                           <span className="block font-medium">
                             {c.name}
-                            {noShows > 1 && <span className="ml-1.5 text-xs font-normal text-danger">{noShows} no-shows</span>}
+                            {noShows > 1 && <span className="ml-1.5 text-xs font-normal text-danger">{t("{n} no-shows", { n: noShows })}</span>}
                           </span>
                           <span className="block truncate text-xs text-muted">{c.email}</span>
                         </span>
@@ -210,18 +215,18 @@ export function Clients() {
             </table>
           </div>
         ) : (
-          <EmptyState icon={Users} title="No clients found" text="Try another name, email or phone number." />
+          <EmptyState icon={Users} title={t("No clients found")} text={t("Try another name, email or phone number.")} />
         )}
         {pages > 1 && (
           <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs text-muted">
             <span>
-              Page {current + 1} of {pages}
+              {t("Page {n} of {total}", { n: current + 1, total: pages })}
             </span>
             <div className="flex gap-1">
-              <Button size="sm" variant="ghost" disabled={current === 0} onClick={() => setPage(current - 1)} aria-label="Previous page">
+              <Button size="sm" variant="ghost" disabled={current === 0} onClick={() => setPage(current - 1)} aria-label={t("Previous page")}>
                 <ChevronLeft />
               </Button>
-              <Button size="sm" variant="ghost" disabled={current >= pages - 1} onClick={() => setPage(current + 1)} aria-label="Next page">
+              <Button size="sm" variant="ghost" disabled={current >= pages - 1} onClick={() => setPage(current + 1)} aria-label={t("Next page")}>
                 <ChevronRight />
               </Button>
             </div>

@@ -1,3 +1,4 @@
+import { uiLang, uiLocale } from "./format";
 import type { ISODate } from "./types";
 
 /** Salon dates are plain "YYYY-MM-DD" strings; arithmetic runs on UTC midnights so DST never shifts a day. */
@@ -53,15 +54,17 @@ export function zonedToUtc(date: ISODate, minutes: number, timeZone: string): nu
   return before;
 }
 
-/** "9:30 AM" */
+/** "9:30 AM", or "09:30" in Turkish. */
 export function formatTime(minutes: number) {
   const h = Math.floor(minutes / 60) % 24;
+  if (uiLang() === "tr") return `${String(h).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
   return `${h % 12 || 12}:${String(minutes % 60).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
 
 /** "9 AM" on the hour, for calendar gutters. */
 export const formatHour = (minutes: number) => {
   const h = Math.floor(minutes / 60) % 24;
+  if (uiLang() === "tr") return `${String(h).padStart(2, "0")}:00`;
   return `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}`;
 };
 
@@ -73,7 +76,7 @@ export const parseTime = (hhmm: string) => {
   return h * 60 + (m || 0);
 };
 
-const fmt = (d: ISODate, o: Intl.DateTimeFormatOptions) => new Date(toUtc(d)).toLocaleDateString("en-US", { timeZone: "UTC", ...o });
+const fmt = (d: ISODate, o: Intl.DateTimeFormatOptions) => new Date(toUtc(d)).toLocaleDateString(uiLocale(), { timeZone: "UTC", ...o });
 
 /** "Thu, Oct 30" */
 export const formatDay = (d: ISODate) => fmt(d, { weekday: "short", day: "numeric", month: "short" });
@@ -87,16 +90,18 @@ export const monthLong = (d: ISODate) => fmt(d, { month: "long", year: "numeric"
 /** "Today", "Tomorrow" or "Thu, Oct 30". */
 export function relativeDay(d: ISODate, today: ISODate) {
   const n = diffDays(d, today);
-  if (n === 0) return "Today";
-  if (n === 1) return "Tomorrow";
-  if (n === -1) return "Yesterday";
+  const tr = uiLang() === "tr";
+  if (n === 0) return tr ? "Bugün" : "Today";
+  if (n === 1) return tr ? "Yarın" : "Tomorrow";
+  if (n === -1) return tr ? "Dün" : "Yesterday";
   return formatDay(d);
 }
 
 export const formatDuration = (min: number) => {
-  if (min < 60) return `${min} min`;
+  const [mn, hr] = uiLang() === "tr" ? ["dk", "sa"] : ["min", "h"];
+  if (min < 60) return `${min} ${mn}`;
   const h = Math.floor(min / 60);
-  return min % 60 ? `${h} h ${min % 60} min` : `${h} h`;
+  return min % 60 ? `${h} ${hr} ${min % 60} ${mn}` : `${h} ${hr}`;
 };
 
 /** "ET", "PT": the short generic name of a time zone, for labelling times. */
@@ -123,3 +128,6 @@ export function visitorTime(date: ISODate, minutes: number, salonZone: string, v
   const local = new Intl.DateTimeFormat("en-US", { timeZone: visitorZone, ...(sameDay ? {} : { weekday: "short" }), hour: "numeric", minute: "2-digit" }).format(at);
   return `${local} in ${zoneCity(visitorZone)}`;
 }
+
+/** "October 30", for ranges where the weekday would be noise. */
+export const formatDayMonth = (d: ISODate) => fmt(d, { day: "numeric", month: "long" });

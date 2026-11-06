@@ -4,11 +4,12 @@ import { Mail, MessageSquare, Search, Send } from "lucide-react";
 import { useState } from "react";
 import { upcomingReminders } from "@/lib/messages";
 import { formatTime, relativeDay, zonedNow } from "@/lib/dates";
-import { timeAgo } from "@/lib/format";
+import { timeAgo, uiLocale } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import type { DemoState, Message, MessageKind } from "@/lib/types";
 import { useNow } from "@/lib/use-now";
 import { Badge, Card, EmptyState, PageHeader, Spinner, cx, inputClass, type Tone } from "../ui";
+import { useT } from "@/lib/i18n";
 
 const KIND: Record<MessageKind, { label: string; tone: Tone }> = {
   confirmation: { label: "Confirmation", tone: "accent" },
@@ -27,6 +28,7 @@ function Channel({ channel }: { channel: Message["channel"] }) {
 }
 
 function Sent({ s, now, q, kind }: { s: DemoState; now: number; q: string; kind: MessageKind | "all" }) {
+  const t = useT();
   const [open, setOpen] = useState<string | null>(null);
   const needle = q.trim().toLowerCase();
   const list = [...s.outbox]
@@ -38,7 +40,7 @@ function Sent({ s, now, q, kind }: { s: DemoState; now: number; q: string; kind:
       return m.subject.toLowerCase().includes(needle) || (c && (c.name.toLowerCase().includes(needle) || c.email.includes(needle)));
     })
     .slice(0, 100);
-  if (!list.length) return <EmptyState icon={Send} title="Nothing here yet" text="Bookings, changes, cancellations and waitlist texts show up as they happen." />;
+  if (!list.length) return <EmptyState icon={Send} title={t("Nothing here yet")} text={t("Bookings, changes, cancellations and waitlist texts show up as they happen.")} />;
   return (
     <ul className="divide-y divide-border">
       {list.map((m) => {
@@ -58,13 +60,13 @@ function Sent({ s, now, q, kind }: { s: DemoState; now: number; q: string; kind:
                 <span className="block truncate text-muted">{m.subject}</span>
               </span>
               <span className="hidden pt-0.5 sm:block">
-                <Badge tone={KIND[m.kind].tone}>{KIND[m.kind].label}</Badge>
+                <Badge tone={KIND[m.kind].tone}>{t(KIND[m.kind].label)}</Badge>
               </span>
             </button>
             {on && (
               <div className="animate-enter border-t border-border bg-surface-2/60 px-4 py-3">
                 <p className="text-xs text-muted">
-                  To {m.channel === "sms" ? c?.phone : c?.email} · {new Date(m.at).toLocaleString("en-US", { timeZone: s.salon.timeZone, dateStyle: "medium", timeStyle: "short" })}
+                  {t("To")} {m.channel === "sms" ? c?.phone : c?.email} · {new Date(m.at).toLocaleString(uiLocale(), { timeZone: s.salon.timeZone, dateStyle: "medium", timeStyle: "short" })}
                 </p>
                 <p className="mt-2 font-medium">{m.subject}</p>
                 <p className="mt-1 max-w-2xl whitespace-pre-line text-muted">{m.body}</p>
@@ -78,9 +80,10 @@ function Sent({ s, now, q, kind }: { s: DemoState; now: number; q: string; kind:
 }
 
 function Scheduled({ s, now }: { s: DemoState; now: number }) {
+  const t = useT();
   const due = upcomingReminders(s, now);
   const { date: today } = zonedNow(s.salon.timeZone, now);
-  if (!due.length) return <EmptyState icon={MessageSquare} title="No reminders due" text="Each confirmed appointment gets a text 24 hours before. The next two days of them show up here." />;
+  if (!due.length) return <EmptyState icon={MessageSquare} title={t("No reminders due")} text={t("Each confirmed appointment gets a text 24 hours before. The next two days of them show up here.")} />;
   return (
     <ul className="divide-y divide-border">
       {due.map((r) => {
@@ -106,6 +109,7 @@ function Scheduled({ s, now }: { s: DemoState; now: number }) {
  * this is the outbox a real deployment would hand to an email and SMS provider.
  */
 export function Messages() {
+  const t = useT();
   const s = useStore();
   const now = useNow();
   const [tab, setTab] = useState<Tab>("sent");
@@ -116,30 +120,30 @@ export function Messages() {
 
   return (
     <div>
-      <PageHeader title="Messages" description="What clients are sent and when. In this demo nothing leaves your browser; a real salon would pass these to its email and SMS provider." />
+      <PageHeader title={t("Messages")} description={t("What clients are sent and when. In this demo nothing leaves your browser; a real salon would pass these to its email and SMS provider.")} />
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex rounded-md border border-border p-0.5" role="tablist" aria-label="Messages">
-          {(["sent", "scheduled"] as Tab[]).map((t) => (
-            <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cx("h-7 rounded px-3 text-xs font-medium", tab === t ? "bg-surface-3 text-text" : "text-muted hover:text-text")}>
-              {t === "sent" ? `Sent · ${s.outbox.length}` : `Scheduled reminders · ${scheduled}`}
+        <div className="flex rounded-md border border-border p-0.5" role="tablist" aria-label={t("Messages")}>
+          {(["sent", "scheduled"] as Tab[]).map((tb) => (
+            <button key={tb} role="tab" aria-selected={tab === tb} onClick={() => setTab(tb)} className={cx("h-7 rounded px-3 text-xs font-medium", tab === tb ? "bg-surface-3 text-text" : "text-muted hover:text-text")}>
+              {tb === "sent" ? `${t("Sent")} · ${s.outbox.length}` : `${t("Scheduled reminders")} · ${scheduled}`}
             </button>
           ))}
         </div>
         {tab === "sent" && (
           <>
             <label className="relative w-full min-w-0 sm:ml-auto sm:w-auto sm:flex-1 sm:max-w-64">
-              <span className="sr-only">Search messages</span>
+              <span className="sr-only">{t("Search messages")}</span>
               <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-faint" aria-hidden />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Client or subject" className={cx(inputClass, "pl-8")} />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Client or subject")} className={cx(inputClass, "pl-8")} />
             </label>
             <label className="sr-only" htmlFor="kind">
-              Kind
+              {t("Kind")}
             </label>
             <select id="kind" value={kind} onChange={(e) => setKind(e.target.value as MessageKind | "all")} className="h-8 w-full rounded-md border border-border bg-surface px-2 text-[13px] sm:w-auto">
-              <option value="all">All kinds</option>
+              <option value="all">{t("All kinds")}</option>
               {(Object.keys(KIND) as MessageKind[]).map((k) => (
                 <option key={k} value={k}>
-                  {KIND[k].label}
+                  {t(KIND[k].label)}
                 </option>
               ))}
             </select>

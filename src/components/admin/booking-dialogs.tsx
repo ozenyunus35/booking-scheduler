@@ -10,6 +10,7 @@ import { update } from "@/lib/store";
 import type { Booking, BookingSource, BookingStatus, Category, DemoState, ISODate } from "@/lib/types";
 import { useToast } from "../toast";
 import { Avatar, Badge, Button, Field, Modal, cx, inputClass, type Tone } from "../ui";
+import { useT } from "@/lib/i18n";
 
 export const STATUS_TONE: Record<BookingStatus, Tone> = { confirmed: "accent", completed: "success", cancelled: "neutral", "no-show": "danger" };
 export const SOURCE_LABEL: Record<BookingSource, string> = { online: "Online", phone: "Phone", "walk-in": "Walk-in", waitlist: "Waitlist" };
@@ -27,10 +28,11 @@ function timeOptions(state: DemoState, serviceId: string, staffId: string, date:
 }
 
 function ServiceSelect({ state, id, value, onChange }: { state: DemoState; id: string; value: string; onChange: (v: string) => void }) {
+  const t = useT();
   return (
     <select id={id} value={value} onChange={(e) => onChange(e.target.value)} className={selectClass}>
       {CATEGORIES.map((c) => (
-        <optgroup key={c} label={c}>
+        <optgroup key={c} label={t(c)}>
           {state.services
             .filter((s) => s.category === c && s.active)
             .map((s) => (
@@ -45,6 +47,7 @@ function ServiceSelect({ state, id, value, onChange }: { state: DemoState; id: s
 }
 
 export function BookingDetails({ state, booking, now, onClose }: { state: DemoState; booking: Booking; now: number; onClose: () => void }) {
+  const t = useT();
   const { toast } = useToast();
   const client = state.clients.find((c) => c.id === booking.clientId);
   const service = state.services.find((s) => s.id === booking.serviceId);
@@ -65,7 +68,7 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
       r = fn(d);
     });
     const res = r as { ok: boolean; error?: string } | undefined;
-    if (res && !res.ok) toast(res.error ?? "That didn't work.", "error");
+    if (res && !res.ok) toast(t(res.error ?? "That didn't work."), "error");
     else {
       toast(done);
       onClose();
@@ -78,24 +81,24 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
     <Modal
       open
       onClose={onClose}
-      title={client?.name ?? "Booking"}
+      title={client?.name ?? t("Booking")}
       footer={
         edit ? (
           <>
-            <Button onClick={() => setEdit(false)}>Back</Button>
+            <Button onClick={() => setEdit(false)}>{t("Back")}</Button>
             <Button
               variant="primary"
               disabled={!options.includes(to.start)}
-              onClick={() => act((d) => moveBooking(d, booking.id, to, Date.now(), false), `Moved to ${formatTime(to.start)} with ${firstName(state.staff.find((p) => p.id === to.staffId)?.name ?? "")}.`)}
+              onClick={() => act((d) => moveBooking(d, booking.id, to, Date.now(), false), t("Moved to {time} with {staff}.", { time: formatTime(to.start), staff: firstName(state.staff.find((p) => p.id === to.staffId)?.name ?? "") }))}
             >
-              Save new time
+              {t("Save new time")}
             </Button>
           </>
         ) : (
           <>
             {live && (
-              <Button variant="ghost" className={cx("text-danger hover:text-danger", !booking.seriesId && "mr-auto")} onClick={() => act((d) => cancelBooking(d, booking.id, Date.now(), false), "Booking cancelled.")}>
-                <Ban /> Cancel booking
+              <Button variant="ghost" className={cx("text-danger hover:text-danger", !booking.seriesId && "mr-auto")} onClick={() => act((d) => cancelBooking(d, booking.id, Date.now(), false), t("Booking cancelled."))}>
+                <Ban /> {t("Cancel booking")}
               </Button>
             )}
             {live && booking.seriesId && (
@@ -106,35 +109,35 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
                   act((d) => {
                     const r = cancelSeries(d, booking.id, Date.now());
                     return r.ok ? { ok: true } : r;
-                  }, "This and the later appointments in the series are cancelled.")
+                  }, t("This and the later appointments in the series are cancelled."))
                 }
               >
-                <Repeat /> Cancel this and later
+                <Repeat /> {t("Cancel this and later")}
               </Button>
             )}
             {live && started && (
-              <Button onClick={() => act((d) => setStatus(d, booking.id, "no-show"), "Marked as no-show.")}>
-                <UserX /> No-show
+              <Button onClick={() => act((d) => setStatus(d, booking.id, "no-show"), t("Marked as no-show."))}>
+                <UserX /> {t("No-show")}
               </Button>
             )}
             {live && started && (
-              <Button variant="primary" onClick={() => act((d) => setStatus(d, booking.id, "completed"), "Marked as completed.")}>
-                <Check /> Completed
+              <Button variant="primary" onClick={() => act((d) => setStatus(d, booking.id, "completed"), t("Marked as completed."))}>
+                <Check /> {t("Completed")}
               </Button>
             )}
             {live && !started && (
               <Button variant="primary" onClick={() => setEdit(true)}>
-                <CalendarClock /> Reschedule
+                <CalendarClock /> {t("Reschedule")}
               </Button>
             )}
-            {!live && <Button onClick={onClose}>Close</Button>}
+            {!live && <Button onClick={onClose}>{t("Close")}</Button>}
           </>
         )
       }
     >
       {edit && service ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Staff">
+          <Field label={t("Staff")}>
             {(id) => (
               <select id={id} value={to.staffId} onChange={(e) => setTo({ ...to, staffId: e.target.value })} className={selectClass}>
                 {staffFor(state, service.id, booking.addOnIds).map((p) => (
@@ -145,13 +148,13 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
               </select>
             )}
           </Field>
-          <Field label="Date">{(id) => <input id={id} type="date" min={today} value={to.date} onChange={(e) => e.target.value && setTo({ ...to, date: e.target.value })} className={inputClass} />}</Field>
+          <Field label={t("Date")}>{(id) => <input id={id} type="date" min={today} value={to.date} onChange={(e) => e.target.value && setTo({ ...to, date: e.target.value })} className={inputClass} />}</Field>
           <div className="sm:col-span-2">
-            <Field label="Start time" hint={options.length ? `${options.length} free start times` : "Nothing free that day. Try another date or person."}>
+            <Field label={t("Start time")} hint={options.length ? `${options.length} free start times` : "Nothing free that day. Try another date or person."}>
               {(id, d) => (
                 <select id={id} aria-describedby={d} value={options.includes(to.start) ? to.start : ""} onChange={(e) => setTo({ ...to, start: Number(e.target.value) })} className={selectClass}>
                   <option value="" disabled>
-                    Choose a time
+                    {t("Choose a time")}
                   </option>
                   {options.map((t) => (
                     <option key={t} value={t}>
@@ -166,33 +169,33 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
       ) : (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={STATUS_TONE[booking.status]}>{booking.status}</Badge>
+            <Badge tone={STATUS_TONE[booking.status]}>{t(booking.status)}</Badge>
             <span className="inline-flex h-5 items-center gap-1 rounded-md border border-border px-1.5 text-xs text-muted">
               {booking.source === "online" ? <Globe className="size-3" aria-hidden /> : booking.source === "phone" ? <Phone className="size-3" aria-hidden /> : booking.source === "waitlist" ? <ListTodo className="size-3" aria-hidden /> : null}
-              {SOURCE_LABEL[booking.source]}
+              {t(SOURCE_LABEL[booking.source])}
             </span>
             {noShows > 0 && (
               <Badge tone="danger">
-                <AlertTriangle className="size-3" aria-hidden /> {noShows} no-show{noShows === 1 ? "" : "s"}
+                <AlertTriangle className="size-3" aria-hidden /> {t(noShows === 1 ? "{n} no-show" : "{n} no-shows", { n: noShows })}
               </Badge>
             )}
-            {booking.anyStaff && <span className="text-xs text-muted">{booking.source === "online" ? "Client chose any professional" : "Given to whoever was free"}</span>}
+            {booking.anyStaff && <span className="text-xs text-muted">{booking.source === "online" ? t("Client chose any professional") : t("Given to whoever was free")}</span>}
             <span className="ml-auto font-mono text-xs text-muted">{booking.ref}</span>
           </div>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
             <div className="col-span-2">
-              <dt className="text-xs text-muted">Service</dt>
+              <dt className="text-xs text-muted">{t("Service")}</dt>
               <dd className="font-medium">
                 {title} <span className="font-normal text-muted">· {formatDuration(length)} · {money(booking.price)}</span>
               </dd>
             </div>
             {series.length > 1 && (
               <div className="col-span-2">
-                <dt className="text-xs text-muted">Repeats</dt>
+                <dt className="text-xs text-muted">{t("Repeats")}</dt>
                 <dd className="flex flex-wrap items-center gap-1.5">
                   <Repeat className="size-3.5 text-faint" aria-hidden />
                   <span className="font-medium">
-                    {series.findIndex((b) => b.id === booking.id) + 1} of {series.length}
+                    {t("{n} of {total}", { n: series.findIndex((b) => b.id === booking.id) + 1, total: series.length })}
                   </span>
                   {series.map((b) => (
                     <span key={b.id} className={cx("rounded border px-1.5 text-xs tabular-nums", b.id === booking.id ? "border-accent text-accent" : b.status === "cancelled" ? "border-border text-faint line-through" : "border-border text-muted")}>
@@ -203,13 +206,13 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
               </div>
             )}
             <div className="col-span-2">
-              <dt className="text-xs text-muted">When</dt>
+              <dt className="text-xs text-muted">{t("When")}</dt>
               <dd className="font-medium">
                 {formatDayLong(booking.date)}, {formatTime(booking.start)} – {formatTime(booking.end)}
               </dd>
             </div>
             <div className="col-span-2">
-              <dt className="text-xs text-muted">With</dt>
+              <dt className="text-xs text-muted">{t("With")}</dt>
               <dd className="flex items-center gap-2 font-medium">
                 {staff && <Avatar name={staff.name} size={20} />}
                 {staff?.name}
@@ -218,7 +221,7 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
             {client && (
               <>
                 <div>
-                  <dt className="text-xs text-muted">Phone</dt>
+                  <dt className="text-xs text-muted">{t("Phone")}</dt>
                   <dd>
                     <a href={`tel:${client.phone.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1.5 hover:text-accent">
                       <Phone className="size-3 text-faint" aria-hidden />
@@ -227,7 +230,7 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
                   </dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="text-xs text-muted">Email</dt>
+                  <dt className="text-xs text-muted">{t("Email")}</dt>
                   <dd className="truncate">
                     <a href={`mailto:${client.email}`} className="inline-flex items-center gap-1.5 hover:text-accent">
                       <Mail className="size-3 text-faint" aria-hidden />
@@ -239,13 +242,13 @@ export function BookingDetails({ state, booking, now, onClose }: { state: DemoSt
             )}
             {(booking.notes || client?.notes) && (
               <div className="col-span-2 rounded-md bg-surface-2 px-3 py-2">
-                <dt className="text-xs text-muted">Notes</dt>
+                <dt className="text-xs text-muted">{t("Notes")}</dt>
                 {booking.notes && <dd className="whitespace-pre-line">{booking.notes}</dd>}
-                {client?.notes && <dd className="text-muted">Client: {client.notes}</dd>}
+                {client?.notes && <dd className="text-muted">{t("Client:")} {client.notes}</dd>}
               </div>
             )}
           </dl>
-          {live && !started && <p className="text-xs text-muted">Tip: drag the appointment on the day view to move it.</p>}
+          {live && !started && <p className="text-xs text-muted">{t("Tip: drag the appointment on the day view to move it.")}</p>}
         </div>
       )}
     </Modal>
@@ -260,6 +263,7 @@ export interface NewBookingDraft {
 }
 
 export function NewBooking({ state, now, draft, onClose, onCreated }: { state: DemoState; now: number; draft: NewBookingDraft; onClose: () => void; onCreated?: (b: Booking) => void }) {
+  const t = useT();
   const { toast } = useToast();
   const firstService = state.services.find((s) => s.active && (!draft.staffId || s.staffIds.includes(draft.staffId)))?.id ?? state.services[0].id;
   const [serviceId, setServiceId] = useState(firstService);
@@ -292,8 +296,8 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const errs: Record<string, string> = match ? {} : { ...validateClient({ name, email, phone }) };
-    if (!name.trim()) errs.name = "Enter the client's name.";
-    if (start == null || !options.includes(start)) errs.start = "Choose a free time.";
+    if (!name.trim()) errs.name = t("Enter the client's name.");
+    if (start == null || !options.includes(start)) errs.start = t("Choose a free time.");
     setErrors(errs);
     if (Object.keys(errs).length) return;
     const input = { serviceId, addOnIds, staffId: validStaff, date, start: start!, client: match ? { id: match.id } : { name, email, phone }, notes, source, online: false };
@@ -303,9 +307,12 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
         r = createSeries(d, input, weeks, count, Date.now());
       });
       if (!r) return;
-      if (!r.ok) return toast(r.error, "error");
+      if (!r.ok) return toast(t(r.error), "error");
       const skipped = r.value.skipped.length;
-      toast(`Booked ${r.value.booked.length} appointments for ${firstName(name)}, every ${weeks} weeks${skipped ? `; ${skipped} date${skipped === 1 ? "" : "s"} didn't fit` : ""}.`);
+      toast(
+        t("Booked {n} appointments for {name}, every {weeks} weeks.", { n: r.value.booked.length, name: firstName(name), weeks }) +
+          (skipped ? ` ${t(skipped === 1 ? "{n} date didn't fit." : "{n} dates didn't fit.", { n: skipped })}` : ""),
+      );
       onCreated?.(r.value.booked[0]);
       onClose();
       return;
@@ -315,8 +322,8 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
       r = createBooking(d, input, Date.now());
     });
     if (!r) return;
-    if (!r.ok) return toast(r.error, "error");
-    toast(`Booked ${visit.name} for ${firstName(name)} at ${formatTime(start!)}.`);
+    if (!r.ok) return toast(t(r.error), "error");
+    toast(t("Booked {service} for {name} at {time}.", { service: visit.name, name: firstName(name), time: formatTime(start!) }));
     onCreated?.(r.value);
     onClose();
   };
@@ -325,19 +332,19 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
     <Modal
       open
       onClose={onClose}
-      title="New booking"
+      title={t("New booking")}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" type="submit" form="new-booking">
-            Create booking
+            {t("Create booking")}
           </Button>
         </>
       }
     >
       <form id="new-booking" onSubmit={submit} noValidate className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <Field label="Client" error={errors.name} hint={name.trim() ? (match ? `Existing client · ${match.phone}` : "New client: add their contact details below.") : "Start typing to find a client."}>
+          <Field label={t("Client")} error={errors.name} hint={name.trim() ? (match ? `Existing client · ${match.phone}` : "New client: add their contact details below.") : "Start typing to find a client."}>
             {(id, d) => (
               <>
                 <input id={id} list="client-names" maxLength={LIMITS.name} value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} aria-describedby={d} autoComplete="off" className={inputClass} />
@@ -352,19 +359,19 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
         </div>
         {!match && name.trim() && (
           <>
-            <Field label="Email" error={errors.email}>
+            <Field label={t("Email")} error={errors.email}>
               {(id, d) => <input id={id} type="email" maxLength={LIMITS.email} value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={!!errors.email} aria-describedby={d} className={inputClass} />}
             </Field>
-            <Field label="Phone" error={errors.phone}>
+            <Field label={t("Phone")} error={errors.phone}>
               {(id, d) => <input id={id} type="tel" maxLength={LIMITS.phone} value={phone} onChange={(e) => setPhone(e.target.value)} aria-invalid={!!errors.phone} aria-describedby={d} className={inputClass} />}
             </Field>
           </>
         )}
-        <Field label="Service">{(id) => <ServiceSelect state={state} id={id} value={serviceId} onChange={setServiceId} />}</Field>
-        <Field label="Then (same visit)" hint={addOnIds.length ? `${formatDuration(visit.duration)} · ${money(visit.price)} in all` : undefined}>
+        <Field label={t("Service")}>{(id) => <ServiceSelect state={state} id={id} value={serviceId} onChange={setServiceId} />}</Field>
+        <Field label={t("Then (same visit)")} hint={addOnIds.length ? `${formatDuration(visit.duration)} · ${money(visit.price)} in all` : undefined}>
           {(id, d) => (
             <select id={id} aria-describedby={d} value={addOnIds[0] ?? ""} onChange={(e) => setAddOn(e.target.value)} className={selectClass}>
-              <option value="">Nothing else</option>
+              <option value="">{t("Nothing else")}</option>
               {addOnOptions.map((x) => (
                 <option key={x.id} value={x.id}>
                   {x.name} · {formatDuration(x.duration)} · {money(x.price)}
@@ -373,10 +380,10 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
             </select>
           )}
         </Field>
-        <Field label="Staff">
+        <Field label={t("Staff")}>
           {(id) => (
             <select id={id} value={validStaff} onChange={(e) => setStaffId(e.target.value)} className={selectClass}>
-              <option value="any">First available</option>
+              <option value="any">{t("First available")}</option>
               {team.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -385,12 +392,12 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
             </select>
           )}
         </Field>
-        <Field label="Date">{(id) => <input id={id} type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} className={inputClass} />}</Field>
-        <Field label="Start time" error={errors.start} hint={options.length ? undefined : "Nothing free. Try another date or person."}>
+        <Field label={t("Date")}>{(id) => <input id={id} type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} className={inputClass} />}</Field>
+        <Field label={t("Start time")} error={errors.start} hint={options.length ? undefined : "Nothing free. Try another date or person."}>
           {(id, d) => (
             <select id={id} aria-describedby={d} aria-invalid={!!errors.start} value={start != null && options.includes(start) ? start : ""} onChange={(e) => setStart(Number(e.target.value))} className={selectClass}>
               <option value="" disabled>
-                Choose a time
+                {t("Choose a time")}
               </option>
               {options.map((t) => (
                 <option key={t} value={t}>
@@ -400,31 +407,31 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
             </select>
           )}
         </Field>
-        <Field label="Booked by">
+        <Field label={t("Booked by")}>
           {(id) => (
             <select id={id} value={source} onChange={(e) => setSource(e.target.value as BookingSource)} className={selectClass}>
-              <option value="phone">Phone</option>
-              <option value="walk-in">Walk-in</option>
+              <option value="phone">{t("Phone")}</option>
+              <option value="walk-in">{t("Walk-in")}</option>
             </select>
           )}
         </Field>
         <div className="sm:col-span-2">
-          <Field label="Notes">{(id) => <input id={id} maxLength={LIMITS.notes} value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} placeholder="Optional" />}</Field>
+          <Field label={t("Notes")}>{(id) => <input id={id} maxLength={LIMITS.notes} value={notes} onChange={(e) => setNotes(e.target.value)} className={inputClass} placeholder={t("Optional")} />}</Field>
         </div>
-        <Field label="Repeat">
+        <Field label={t("Repeat")}>
           {(id) => (
             <select id={id} value={weeks} onChange={(e) => setWeeks(Number(e.target.value))} className={selectClass}>
-              <option value={0}>Doesn&apos;t repeat</option>
+              <option value={0}>{t("Doesn't repeat")}</option>
               {SERIES_WEEKS.map((w) => (
                 <option key={w} value={w}>
-                  Every {w} weeks
+                  {t("Every {n} weeks", { n: w })}
                 </option>
               ))}
             </select>
           )}
         </Field>
         {weeks > 0 && (
-          <Field label="Appointments in all">
+          <Field label={t("Appointments in all")}>
             {(id) => (
               <select id={id} value={count} onChange={(e) => setCount(Number(e.target.value))} className={selectClass}>
                 {Array.from({ length: 11 }, (_, i) => i + 2).map((n) => (
@@ -439,7 +446,7 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
         {weeks > 0 && (
           <div className="sm:col-span-2" aria-live="polite">
             {plan.length ? (
-              <ul className="divide-y divide-border rounded-md border border-border text-xs" aria-label="Series preview">
+              <ul className="divide-y divide-border rounded-md border border-border text-xs" aria-label={t("Series preview")}>
                 <li className="flex items-center gap-2 px-3 py-1.5">
                   <Check className="size-3.5 text-success" aria-hidden />
                   <span className="w-28 shrink-0 font-medium">{formatDay(date)}</span>
@@ -455,7 +462,7 @@ export function NewBooking({ state, now, draft, onClose, onCreated }: { state: D
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-muted">Choose a start time to see every date in the series.</p>
+              <p className="text-xs text-muted">{t("Choose a start time to see every date in the series.")}</p>
             )}
           </div>
         )}
