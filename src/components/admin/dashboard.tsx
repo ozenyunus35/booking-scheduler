@@ -14,18 +14,18 @@ import type { DemoState } from "@/lib/types";
 import { useNow } from "@/lib/use-now";
 import { Avatar, Badge, Button, Card, CardHeader, EmptyState, Meter, PageHeader, Sparkline, Spinner, cx } from "../ui";
 import { BookingDetails, SOURCE_LABEL, STATUS_TONE } from "./booking-dialogs";
-import { useT } from "@/lib/i18n";
+import { useLang, useT } from "@/lib/i18n";
 
 function Change({ current, previous, invert, format = "pct" }: { current: number; previous: number; invert?: boolean; format?: "pct" | "pts" }) {
   const t = useT();
+  const { lang } = useLang();
   const diff = format === "pts" ? Math.round((current - previous) * 100) : previous === 0 ? 0 : Math.round(((current - previous) / previous) * 100);
   const good = invert ? diff < 0 : diff > 0;
   return (
     <span className="text-xs text-muted">
       <span className={cx("font-medium tabular-nums", diff === 0 ? "text-muted" : good ? "text-success" : "text-danger")}>
-        {diff > 0 ? "+" : ""}
-        {diff}
-        {format === "pts" ? " pts" : "%"}
+        {diff > 0 ? "+" : diff < 0 ? "-" : ""}
+        {format === "pts" ? `${Math.abs(diff)} ${t("pts")}` : lang === "tr" ? `%${Math.abs(diff)}` : `${Math.abs(diff)}%`}
       </span>{" "}
       <span className="hidden xl:inline">{t("vs prior period")}</span>
     </span>
