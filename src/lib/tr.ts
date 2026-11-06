@@ -248,8 +248,10 @@ export const TR: Record<string, string> = {
   "Blocked after each appointment.": "Her randevudan sonra boş bırakılır.",
   None: "Yok",
   "Offered by": "Veren kişiler",
+  "Offered by {n} people": "{n} kişi veriyor",
   "Bookable online": "Online randevuya açık",
   "{n} services": "{n} hizmet",
+  "{n} services on the booking page": "Randevu sayfasında {n} hizmet",
   Hidden: "Gizli",
   "{n} min buffer": "{n} dk temizlik payı",
 

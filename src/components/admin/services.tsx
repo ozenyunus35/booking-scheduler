@@ -129,7 +129,7 @@ export function Services() {
     <div>
       <PageHeader
         title={t("Services")}
-        description={`${s.services.filter((x) => x.active).length} services on the booking page`}
+        description={t("{n} services on the booking page", { n: s.services.filter((x) => x.active).length })}
         actions={
           <Button variant="primary" onClick={() => setEditing(blank(s))}>
             <Plus /> {t("New service")}
@@ -156,7 +156,7 @@ export function Services() {
                         {x.buffer ? ` + ${t("{n} min buffer", { n: x.buffer })}` : ""} · {x.description}
                       </p>
                     </div>
-                    <div className="hidden -space-x-1.5 sm:flex" aria-label={`Offered by ${x.staffIds.length} people`}>
+                    <div className="hidden -space-x-1.5 sm:flex" aria-label={t("Offered by {n} people", { n: x.staffIds.length })}>
                       {x.staffIds.slice(0, 4).map((id) => {
                         const p = s.staff.find((y) => y.id === id);
                         return p ? <Avatar key={id} name={p.name} size={22} /> : null;

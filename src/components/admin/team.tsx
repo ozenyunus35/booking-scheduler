@@ -287,7 +287,7 @@ export function Team() {
                             toast(t("Time off removed."));
                           }}
                           className="rounded p-0.5 text-muted hover:bg-surface-3 hover:text-text"
-                          aria-label={`Remove ${off.reason} for ${p.name}`}
+                          aria-label={t("Remove {reason} for {name}", { reason: off.reason, name: p.name })}
                         >
                           <X className="size-3.5" />
                         </button>
